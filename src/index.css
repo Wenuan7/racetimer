@@ -9,6 +9,43 @@ body {
   color: #1f2933;
 }
 
+.error-fallback {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 20px 16px 80px;
+}
+
+.error-fallback h1 {
+  font-size: 20px;
+  margin: 0 0 12px;
+}
+
+.error-msg {
+  font-family: ui-monospace, Consolas, monospace;
+  font-size: 13px;
+  color: #b91c1c;
+  word-break: break-all;
+}
+
+.error-hint {
+  font-size: 14px;
+  color: #475569;
+  line-height: 1.5;
+}
+
+.error-btn {
+  margin-top: 16px;
+  width: 100%;
+  padding: 14px;
+  font-size: 16px;
+  font-weight: 700;
+  border: none;
+  border-radius: 12px;
+  background: #2563eb;
+  color: #fff;
+  cursor: pointer;
+}
+
 #root {
   max-width: 720px;
   margin: 0 auto;

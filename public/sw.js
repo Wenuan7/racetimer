@@ -1,14 +1,7 @@
-const CACHE_NAME = 'kart-endurance-mvp-v2'
+// 使用「网络优先」避免缓存旧 index.html 引用的旧 JS 哈希，导致白屏
+const CACHE_NAME = 'kart-endurance-mvp-v4'
 
 self.addEventListener('install', (event) => {
-  const base = self.registration.scope
-  const urls = [
-    base,
-    new URL('index.html', base).href,
-    new URL('manifest.webmanifest', base).href,
-    new URL('favicon.svg', base).href,
-  ]
-  event.waitUntil(caches.open(CACHE_NAME).then((cache) => cache.addAll(urls)))
   self.skipWaiting()
 })
 
@@ -33,11 +26,16 @@ self.addEventListener('fetch', (event) => {
     return
   }
   event.respondWith(
-    caches.match(event.request).then((cached) => {
-      if (cached) {
-        return cached
-      }
-      return fetch(event.request)
-    }),
+    fetch(event.request)
+      .then((response) => {
+        if (response && response.status === 200 && response.type === 'basic') {
+          const copy = response.clone()
+          caches.open(CACHE_NAME).then((cache) =>
+            cache.put(event.request, copy).catch(() => {}),
+          )
+        }
+        return response
+      })
+      .catch(() => caches.match(event.request)),
   )
 })

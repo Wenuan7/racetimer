@@ -2,10 +2,18 @@ import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import './index.css'
 import App from './App.tsx'
+import { ErrorBoundary } from './ErrorBoundary.tsx'
 
-createRoot(document.getElementById('root')!).render(
+const el = document.getElementById('root')
+if (!el) {
+  throw new Error('找不到 #root 节点')
+}
+
+createRoot(el).render(
   <StrictMode>
-    <App />
+    <ErrorBoundary>
+      <App />
+    </ErrorBoundary>
   </StrictMode>,
 )
 

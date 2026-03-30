@@ -56,6 +56,11 @@ const defaultConfig: Config = {
   maxDriveTimeMinutes: 75,
 }
 
+function finiteNum(v: unknown, fallback: number): number {
+  const n = Number(v)
+  return Number.isFinite(n) ? n : fallback
+}
+
 function createDefaultDrivers(): Driver[] {
   return [
     { id: 'driver-1', name: '车手1', age: 18, bloodType: '', weight: 65, totalTime: 0, stintCount: 0 },
@@ -83,14 +88,11 @@ function normalizeState(raw: unknown): AppState {
   const oldConfig = maybeState.config as Record<string, unknown> | undefined
 
   const config: Config = {
-    raceDurationMinutes:
-      Number(oldConfig?.raceDurationMinutes) || defaultConfig.raceDurationMinutes,
-    minStints: Number(oldConfig?.minStints) || defaultConfig.minStints,
-    maxStintMinutes: Number(oldConfig?.maxStintMinutes) || defaultConfig.maxStintMinutes,
-    minDriveTimeMinutes:
-      Number(oldConfig?.minDriveTimeMinutes) || defaultConfig.minDriveTimeMinutes,
-    maxDriveTimeMinutes:
-      Number(oldConfig?.maxDriveTimeMinutes) || defaultConfig.maxDriveTimeMinutes,
+    raceDurationMinutes: finiteNum(oldConfig?.raceDurationMinutes, defaultConfig.raceDurationMinutes),
+    minStints: finiteNum(oldConfig?.minStints, defaultConfig.minStints),
+    maxStintMinutes: finiteNum(oldConfig?.maxStintMinutes, defaultConfig.maxStintMinutes),
+    minDriveTimeMinutes: finiteNum(oldConfig?.minDriveTimeMinutes, defaultConfig.minDriveTimeMinutes),
+    maxDriveTimeMinutes: finiteNum(oldConfig?.maxDriveTimeMinutes, defaultConfig.maxDriveTimeMinutes),
   }
 
   let drivers: Driver[] = []
@@ -135,15 +137,21 @@ function normalizeState(raw: unknown): AppState {
   const ids = new Set<string>()
   drivers = drivers.map((d, i) => {
     let id = d.id
+    let n = 0
     while (ids.has(id)) {
-      id = `driver-${i}-${Date.now()}`
+      id = `driver-${i}-${Date.now()}-${n}`
+      n += 1
     }
     ids.add(id)
     return { ...d, id }
   })
 
+  if (drivers.length === 0) {
+    return defaultState
+  }
+
   const currentExists = drivers.some((d) => d.id === maybeState.currentDriverId)
-  const currentDriverId = currentExists ? String(maybeState.currentDriverId) : drivers[0]?.id ?? 'driver-1'
+  const currentDriverId = currentExists ? String(maybeState.currentDriverId) : drivers[0].id
 
   return {
     config,
@@ -155,20 +163,33 @@ function normalizeState(raw: unknown): AppState {
   }
 }
 
+function safeNormalizeState(raw: unknown): AppState {
+  try {
+    return normalizeState(raw)
+  } catch {
+    return defaultState
+  }
+}
+
 function createDriverId(): string {
   return `driver-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`
 }
 
 function reducer(state: AppState, action: Action): AppState {
   switch (action.type) {
-    case 'SET_CONFIG_NUMBER':
+    case 'SET_CONFIG_NUMBER': {
+      const v = Number(action.value)
+      if (!Number.isFinite(v)) {
+        return state
+      }
       return {
         ...state,
         config: {
           ...state.config,
-          [action.field]: action.value,
+          [action.field]: v,
         },
       }
+    }
     case 'ADD_DRIVER': {
       if (state.drivers.length >= MAX_DRIVERS) {
         return state
@@ -244,6 +265,9 @@ function reducer(state: AppState, action: Action): AppState {
 
 /** 显示为 mm:ss.SSS，超过 1 小时为 h:mm:ss.SSS */
 function formatDurationMs(ms: number): string {
+  if (!Number.isFinite(ms)) {
+    return '0:00.000'
+  }
   const t = Math.max(0, Math.floor(ms))
   const milli = t % 1000
   const totalSec = Math.floor(t / 1000)
@@ -261,6 +285,9 @@ function formatDurationMs(ms: number): string {
 }
 
 function totalMsToMinutes(ms: number): number {
+  if (!Number.isFinite(ms)) {
+    return 0
+  }
   return ms / 60000
 }
 
@@ -271,7 +298,7 @@ function App() {
   const [state, dispatch] = useReducer(reducer, defaultState, () => {
     try {
       const saved = localStorage.getItem(STORAGE_KEY)
-      return saved ? normalizeState(JSON.parse(saved)) : defaultState
+      return saved ? safeNormalizeState(JSON.parse(saved)) : defaultState
     } catch {
       return defaultState
     }
@@ -288,8 +315,21 @@ function App() {
   const [formWeight, setFormWeight] = useState('')
 
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify({ persistVersion: PERSIST_VERSION, ...state }))
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify({ persistVersion: PERSIST_VERSION, ...state }))
+    } catch {
+      // 存储失败（隐私模式/配额满）不应导致整页崩溃
+    }
   }, [state])
+
+  useEffect(() => {
+    if (state.drivers.length === 0) {
+      return
+    }
+    if (!state.drivers.some((d) => d.id === state.currentDriverId)) {
+      dispatch({ type: 'SELECT_DRIVER', driverId: state.drivers[0].id })
+    }
+  }, [state.drivers, state.currentDriverId])
 
   useEffect(() => {
     const timer = window.setInterval(() => {
@@ -585,16 +625,20 @@ function App() {
               <h2>驾驶记录</h2>
               <label>
                 当前车手
-                <select
-                  value={state.currentDriverId}
-                  onChange={(e) => dispatch({ type: 'SELECT_DRIVER', driverId: e.target.value })}
-                >
-                  {state.drivers.map((driver) => (
-                    <option key={driver.id} value={driver.id}>
-                      {driver.name}
-                    </option>
-                  ))}
-                </select>
+                {state.drivers.length === 0 ? (
+                  <p className="hint">暂无车手，请先到「管理」添加车手。</p>
+                ) : (
+                  <select
+                    value={state.currentDriverId}
+                    onChange={(e) => dispatch({ type: 'SELECT_DRIVER', driverId: e.target.value })}
+                  >
+                    {state.drivers.map((driver) => (
+                      <option key={driver.id} value={driver.id}>
+                        {driver.name}
+                      </option>
+                    ))}
+                  </select>
+                )}
               </label>
 
               <p className="focus">
