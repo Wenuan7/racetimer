@@ -419,3 +419,97 @@ button:disabled {
     grid-template-columns: 1fr 1fr;
   }
 }
+
+.event-config {
+  margin-bottom: 12px;
+}
+
+.event-config-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 6px;
+  font-size: 14px;
+  color: #0f172a;
+}
+
+@media (min-width: 768px) {
+  .event-config-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+.timer-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.timer-card {
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  background: #fff;
+  padding: 10px;
+}
+
+.timer-label {
+  font-size: 13px;
+  font-weight: 800;
+  color: #0f172a;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.timer-badge {
+  font-size: 12px;
+  font-weight: 900;
+  color: #d93025;
+}
+
+.timer-value {
+  margin-top: 8px;
+  font-size: 20px;
+  font-weight: 900;
+  color: #0f172a;
+}
+
+.stint-list {
+  display: grid;
+  gap: 8px;
+}
+
+.stint-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  background: #fbfdff;
+}
+
+.stint-left {
+  display: grid;
+  gap: 4px;
+}
+
+.stint-index {
+  font-size: 13px;
+  font-weight: 900;
+  color: #0f172a;
+}
+
+.stint-driver {
+  font-size: 13px;
+  color: #52606d;
+  word-break: break-word;
+}
+
+.stint-duration {
+  font-size: 16px;
+  font-weight: 900;
+  color: #0f172a;
+  white-space: nowrap;
+}

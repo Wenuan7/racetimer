@@ -46,6 +46,12 @@ type AppState = {
   pitEndTime: number | null
   pitPrevDriverId: string | null
   pitNextDriverId: string | null
+
+  // 进站取消后：倒计时时间仍保留但不会触发换车（无意义计时）
+  pitCancelled: boolean
+
+  // 进站开始后：本棒计时暂停展示的毫秒值
+  stintPausedMs: number | null
 }
 
 type Action =
@@ -69,6 +75,7 @@ type Action =
   | { type: 'END_STINT'; now: number }
   | { type: 'START_PIT'; now: number }
   | { type: 'FINISH_PIT'; pitEndTime: number }
+  | { type: 'CANCEL_PIT'; now: number }
 
 const STORAGE_KEY = 'kart-endurance-mvp-state'
 const PERSIST_VERSION = 4
@@ -116,6 +123,9 @@ const defaultState: AppState = {
   pitEndTime: null,
   pitPrevDriverId: null,
   pitNextDriverId: null,
+
+  pitCancelled: false,
+  stintPausedMs: null,
 }
 
 function normalizeState(raw: unknown): AppState {
@@ -218,6 +228,13 @@ function normalizeState(raw: unknown): AppState {
   const pitPrevDriverId = typeof (obj as any).pitPrevDriverId === 'string' ? ((obj as any).pitPrevDriverId as string) : null
   const pitNextDriverId = typeof (obj as any).pitNextDriverId === 'string' ? ((obj as any).pitNextDriverId as string) : null
 
+  const pitCancelled = typeof (obj as any).pitCancelled === 'boolean' ? ((obj as any).pitCancelled as boolean) : false
+
+  const stintPausedMs =
+    typeof (obj as any).stintPausedMs === 'number'
+      ? Math.max(0, (obj as any).stintPausedMs as number)
+      : null
+
   return {
     drivers,
     stints,
@@ -229,6 +246,8 @@ function normalizeState(raw: unknown): AppState {
     pitEndTime,
     pitPrevDriverId,
     pitNextDriverId,
+    pitCancelled,
+    stintPausedMs,
   }
 }
 
@@ -298,6 +317,8 @@ function reducer(state: AppState, action: Action): AppState {
         pitEndTime,
         pitPrevDriverId: pitEndTime ? state.pitPrevDriverId : null,
         pitNextDriverId: pitEndTime ? state.pitNextDriverId : null,
+        pitCancelled: pitEndTime ? state.pitCancelled : false,
+        stintPausedMs: pitEndTime ? state.stintPausedMs : null,
       }
     }
 
@@ -332,6 +353,8 @@ function reducer(state: AppState, action: Action): AppState {
         pitEndTime: null,
         pitPrevDriverId: null,
         pitNextDriverId: null,
+        pitCancelled: false,
+        stintPausedMs: null,
         currentDriverId: action.payload.drivers[0]?.id ?? state.currentDriverId,
         replacementDriverId: action.payload.drivers[1]?.id ?? action.payload.drivers[0]?.id ?? state.replacementDriverId,
       }
@@ -361,7 +384,7 @@ function reducer(state: AppState, action: Action): AppState {
 
     case 'START_PIT': {
       if (state.activeStintStartTime === null) return state
-      if (state.pitEndTime !== null) return state
+      if (state.pitEndTime !== null && !state.pitCancelled) return state
       const nextEvent = getSelectedEvent(state)
       const pitDurationMs = Math.max(0, Math.floor(nextEvent.minPitTimeMinutes * 60000))
       const now = action.now
@@ -386,6 +409,8 @@ function reducer(state: AppState, action: Action): AppState {
           pitEndTime: null,
           pitPrevDriverId: null,
           pitNextDriverId: null,
+          pitCancelled: false,
+          stintPausedMs: null,
         }
       }
 
@@ -396,11 +421,14 @@ function reducer(state: AppState, action: Action): AppState {
         pitEndTime: now + pitDurationMs,
         pitPrevDriverId: state.currentDriverId,
         pitNextDriverId: state.replacementDriverId,
+        pitCancelled: false,
+        stintPausedMs: duration,
       }
     }
 
     case 'FINISH_PIT': {
       if (state.pitEndTime === null) return state
+      if (state.pitCancelled) return state
       if (!state.pitPrevDriverId || !state.pitNextDriverId) return state
       const end = action.pitEndTime
       return {
@@ -411,6 +439,20 @@ function reducer(state: AppState, action: Action): AppState {
         pitEndTime: null,
         pitPrevDriverId: null,
         pitNextDriverId: null,
+        pitCancelled: false,
+        stintPausedMs: null,
+      }
+    }
+
+    case 'CANCEL_PIT': {
+      if (state.pitEndTime === null) return state
+      if (state.pitCancelled) return state
+      // 取消换车：不触发 FINISH_PIT，但倒计时“时间仍存在”（无意义计时）
+      return {
+        ...state,
+        activeStintStartTime: action.now,
+        pitCancelled: true,
+        stintPausedMs: null,
       }
     }
 
@@ -451,8 +493,9 @@ export default function App() {
   useEffect(() => {
     if (state.pitEndTime === null) return
     if (now < state.pitEndTime) return
+    if (state.pitCancelled) return
     dispatch({ type: 'FINISH_PIT', pitEndTime: state.pitEndTime })
-  }, [now, state.pitEndTime])
+  }, [now, state.pitEndTime, state.pitCancelled])
 
   const selectedEvent = useMemo(() => getSelectedEvent(state), [state])
 
@@ -652,11 +695,12 @@ export default function App() {
     window.alert('导入完成：车手/赛事配置已覆盖，计时记录已清空。')
   }
 
-  const pitRemainingMs = state.pitEndTime === null ? 0 : Math.max(0, state.pitEndTime - now)
+  const pitIsActive = state.pitEndTime !== null && !state.pitCancelled
+  const pitRemainingMs = pitIsActive ? Math.max(0, (state.pitEndTime as number) - now) : 0
 
-  const canStart = state.activeStintStartTime === null && state.pitEndTime === null && state.drivers.length > 0
-  const canEnd = state.activeStintStartTime !== null && state.pitEndTime === null
-  const canPit = state.activeStintStartTime !== null && state.pitEndTime === null && state.replacementDriverId !== state.currentDriverId
+  const canStart = state.activeStintStartTime === null && !pitIsActive && state.drivers.length > 0
+  const canEnd = state.activeStintStartTime !== null && !pitIsActive
+  const canPit = state.activeStintStartTime !== null && !pitIsActive && state.replacementDriverId !== state.currentDriverId
 
   return (
     <div className="app-shell">
@@ -886,18 +930,31 @@ export default function App() {
             <section className="card">
               <h2>换车记录</h2>
 
+              <div className="event-config">
+                <p className="hint" style={{ margin: '0 0 10px' }}>
+                  赛事配置：{selectedEvent.name}
+                </p>
+                <div className="event-config-grid">
+                  <div>总时长：{selectedEvent.raceDurationMinutes} 分钟</div>
+                  <div>最少棒数：{selectedEvent.minStints} </div>
+                  <div>单棒最大：{selectedEvent.maxStintMinutes} 分钟</div>
+                  <div>每人最少-最多驾驶：{selectedEvent.minDriveTimeMinutes}-{selectedEvent.maxDriveTimeMinutes} 分钟</div>
+                  <div>进站最小时间：{selectedEvent.minPitTimeMinutes} 分钟</div>
+                </div>
+              </div>
+
               <div className="pit-slots">
                 <div className="pit-slot">
                   <div className="pit-slot-title">1号位（当前驾驶车手）</div>
                   <div className="pit-slot-value">
                     {currentDriver ? currentDriver.name : '未选择'}
-                    {state.pitEndTime !== null && <span className="pit-state"> · 进站中</span>}
+                    {pitIsActive && <span className="pit-state"> · 进站中</span>}
                   </div>
                 </div>
 
                 <div className="pit-slot">
                   <div className="pit-slot-title">2号位（替换车手）</div>
-                  {state.pitEndTime === null ? (
+                  {!pitIsActive ? (
                     <select
                       value={state.replacementDriverId}
                       onChange={(e) => dispatch({ type: 'SELECT_REPLACEMENT_DRIVER', id: e.target.value })}
@@ -914,40 +971,67 @@ export default function App() {
                 </div>
               </div>
 
-              {state.pitEndTime !== null ? (
-                <p className="focus mono" style={{ marginTop: 10 }}>
-                  进站倒计时：<strong>{formatDurationMs(pitRemainingMs)}</strong>
-                </p>
-              ) : (
-                <p className="focus mono" style={{ marginTop: 10 }}>
-                  本棒计时：<strong>{formatDurationMs(activeStintMs)}</strong>
-                </p>
-              )}
+              <div className="timer-row">
+                <div className="timer-card">
+                  <div className="timer-label">
+                    本棒计时
+                    {pitIsActive && <span className="timer-badge">（进站中）</span>}
+                  </div>
+                  <div className="timer-value mono">
+                    {formatDurationMs(pitIsActive ? state.stintPausedMs ?? 0 : activeStintMs)}
+                  </div>
+                </div>
 
-              <div className="actions">
-                <button
-                  type="button"
-                  className="start"
-                  disabled={!canStart}
-                  onClick={() => dispatch({ type: 'START_STINT', now: Date.now() })}
-                >
-                  开始驾驶
-                </button>
-
-                <button
-                  type="button"
-                  className="stop"
-                  disabled={!canEnd}
-                  onClick={() => dispatch({ type: 'END_STINT', now: Date.now() })}
-                >
-                  结束驾驶
-                </button>
+                <div className="timer-card">
+                  <div className="timer-label">进站倒计时</div>
+                  <div className="timer-value mono">{pitIsActive ? formatDurationMs(pitRemainingMs) : '—'}</div>
+                </div>
               </div>
 
-              <div style={{ height: 10 }} />
-              <button type="button" className="start full-width" disabled={!canPit} onClick={() => dispatch({ type: 'START_PIT', now: Date.now() })}>
-                进站（倒计时换车）
-              </button>
+              <div className="actions">
+                {pitIsActive ? (
+                  <>
+                    <button
+                      type="button"
+                      className="stop"
+                      onClick={() => dispatch({ type: 'CANCEL_PIT', now: Date.now() })}
+                    >
+                      取消进站
+                    </button>
+                    <button type="button" className="start" disabled>
+                      进站中
+                    </button>
+                  </>
+                ) : state.activeStintStartTime === null ? (
+                  <>
+                    <button
+                      type="button"
+                      className="start"
+                      disabled={!canStart}
+                      onClick={() => dispatch({ type: 'START_STINT', now: Date.now() })}
+                    >
+                      开始驾驶
+                    </button>
+                    <button type="button" className="start" disabled>
+                      进站（倒计时换车）
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <button
+                      type="button"
+                      className="stop"
+                      disabled={!canEnd}
+                      onClick={() => dispatch({ type: 'END_STINT', now: Date.now() })}
+                    >
+                      结束驾驶
+                    </button>
+                    <button type="button" className="start" disabled={!canPit} onClick={() => dispatch({ type: 'START_PIT', now: Date.now() })}>
+                      进站（倒计时换车）
+                    </button>
+                  </>
+                )}
+              </div>
             </section>
 
             <section className="card">
@@ -969,6 +1053,29 @@ export default function App() {
                     </article>
                   )
                 })}
+              </div>
+
+              <h3 style={{ margin: '14px 0 10px', fontSize: 16 }}>每一棒明细</h3>
+              <div className="stint-list">
+                {state.stints.length === 0 ? (
+                  <p className="hint">暂无棒次记录</p>
+                ) : (
+                  (() => {
+                    const sorted = [...state.stints].sort((a, b) => a.startTime - b.startTime)
+                    return sorted.map((s, idx) => {
+                      const driver = state.drivers.find((d) => d.id === s.driverId)
+                      return (
+                        <div key={`${s.startTime}-${s.endTime}-${idx}`} className="stint-row">
+                          <div className="stint-left">
+                            <div className="stint-index">棒次 {idx + 1}</div>
+                            <div className="stint-driver">{driver?.name ?? s.driverId}</div>
+                          </div>
+                          <div className="stint-duration mono">{formatDurationMs(s.duration)}</div>
+                        </div>
+                      )
+                    })
+                  })()
+                )}
               </div>
             </section>
           </>
