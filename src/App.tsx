@@ -1038,7 +1038,6 @@ export default function App() {
           <>
             <header className="manage-brand">
               <h1 className="brand-title">TFG RaceTimer</h1>
-              <p className="brand-sub">记录</p>
             </header>
           </>
         )}
@@ -1047,7 +1046,6 @@ export default function App() {
           <>
             <header className="manage-brand">
               <h1 className="brand-title">TFG RaceTimer</h1>
-              <p className="brand-sub">赛事与车手管理</p>
             </header>
 
             <section className="card manage-accordion">

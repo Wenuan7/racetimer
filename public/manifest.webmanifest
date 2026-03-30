@@ -1,6 +1,6 @@
 {
-  "name": "卡丁车耐力赛时间管理工具",
-  "short_name": "耐力赛计时",
+  "name": "TFG RaceTimer",
+  "short_name": "TFG RaceTimer",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
