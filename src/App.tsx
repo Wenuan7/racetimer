@@ -99,6 +99,16 @@ const defaultEvent: Omit<EventRule, 'id'> = {
   minPitTimeMinutes: 2,
 }
 
+function presetDrivers(): Driver[] {
+  return [
+    { id: 'driver-1', name: 'TFG-Sino', age: 23, bloodType: 'AB+', weight: 60, onRace: true },
+    { id: 'driver-2', name: 'TFG-毛哥', age: 34, bloodType: '', weight: 60, onRace: true },
+    { id: 'driver-3', name: 'TFG-Gary', age: 24, bloodType: 'A+', weight: 80, onRace: true },
+    { id: 'driver-4', name: 'TFG-調', age: 17, bloodType: 'O-', weight: 70, onRace: true },
+    { id: 'driver-5', name: 'TFG-King', age: 15, bloodType: 'AB+', weight: 75, onRace: true },
+  ]
+}
+
 function finiteNum(v: unknown, fallback: number) {
   const n = Number(v)
   return Number.isFinite(n) ? n : fallback
@@ -109,13 +119,7 @@ function createId(prefix: string) {
 }
 
 function createDefaultDrivers(): Driver[] {
-  return [
-    { id: 'driver-1', name: 'TFG-Sino', age: 23, bloodType: 'AB+', weight: 60, onRace: true },
-    { id: 'driver-2', name: 'TFG-毛哥', age: 34, bloodType: '', weight: 60, onRace: true },
-    { id: 'driver-3', name: 'TFG-Gary', age: 24, bloodType: 'A+', weight: 80, onRace: true },
-    { id: 'driver-4', name: 'TFG-調', age: 17, bloodType: 'O-', weight: 70, onRace: true },
-    { id: 'driver-5', name: 'TFG-King', age: 15, bloodType: 'AB+', weight: 75, onRace: true },
-  ]
+  return presetDrivers()
 }
 
 const defaultState: AppState = {
@@ -244,13 +248,44 @@ function normalizeState(raw: unknown): AppState {
       ? Math.max(0, (obj as any).stintPausedMs as number)
       : null
 
+  // 自动补齐：如果旧存档缺少新预设车手/赛事，则追加/覆盖，避免你看到“预设不显示”
+  const presets = presetDrivers()
+  const presetEvent: EventRule = { id: 'event-1', ...defaultEvent }
+
+  const mergedDrivers = [...drivers]
+  const driverIdSet = new Set(mergedDrivers.map((d) => d.id))
+  for (const pd of presets) {
+    if (driverIdSet.has(pd.id)) continue
+    if (mergedDrivers.length >= MAX_DRIVERS) break
+    mergedDrivers.push(pd)
+    driverIdSet.add(pd.id)
+  }
+
+  const mergedEvents = (() => {
+    if (events.some((e) => e.id === presetEvent.id)) {
+      return events.map((e) => (e.id === presetEvent.id ? presetEvent : e))
+    }
+    return [presetEvent, ...events].slice(0, MAX_EVENTS)
+  })()
+
+  const mergedSelectedEventId =
+    typeof selectedEventId === 'string' && mergedEvents.some((e) => e.id === selectedEventId) ? selectedEventId : mergedEvents[0].id
+
+  const mergedCurrentDriverId =
+    mergedDrivers.some((d) => d.id === currentDriverId) ? currentDriverId : mergedDrivers[0].id
+
+  const mergedReplacementDriverId =
+    mergedDrivers.some((d) => d.id === replacementDriverId)
+      ? replacementDriverId
+      : mergedDrivers.find((d) => d.id !== mergedCurrentDriverId)?.id ?? mergedDrivers[0].id
+
   return {
-    drivers,
+    drivers: mergedDrivers,
     stints,
-    events,
-    selectedEventId,
-    currentDriverId,
-    replacementDriverId,
+    events: mergedEvents,
+    selectedEventId: mergedSelectedEventId,
+    currentDriverId: mergedCurrentDriverId,
+    replacementDriverId: mergedReplacementDriverId,
     activeStintStartTime,
     pitEndTime,
     pitPrevDriverId,
