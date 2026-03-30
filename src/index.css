@@ -260,6 +260,15 @@ h2 {
   letter-spacing: -0.02em;
 }
 
+.race-config-title {
+  margin: 6px 0 10px;
+  text-align: center;
+  font-size: 26px;
+  font-weight: 900;
+  color: #0f172a;
+  letter-spacing: -0.02em;
+}
+
 .section-gap {
   height: 6px;
 }

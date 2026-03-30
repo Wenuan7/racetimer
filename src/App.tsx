@@ -280,13 +280,35 @@ function normalizeState(raw: unknown): AppState {
       ? replacementDriverId
       : mergedDrivers.find((d) => d.id !== mergedCurrentDriverId)?.id ?? mergedDrivers[0].id
 
+  const activeEventForLimit =
+    mergedEvents.find((e) => e.id === mergedSelectedEventId) ?? mergedEvents[0] ?? { ...defaultEvent, id: 'event-1' }
+
+  const limitedDriversRaw = limitOnRaceByTeamSize(mergedDrivers, activeEventForLimit.teamSize)
+  let raceDriversLimited = limitedDriversRaw.filter((d) => d.onRace)
+  if (raceDriversLimited.length === 0 && limitedDriversRaw.length > 0) {
+    limitedDriversRaw[0] = { ...limitedDriversRaw[0], onRace: true }
+    raceDriversLimited = limitedDriversRaw.filter((d) => d.onRace)
+  }
+
+  const finalCurrentDriverId = raceDriversLimited.some((d) => d.id === mergedCurrentDriverId)
+    ? mergedCurrentDriverId
+    : raceDriversLimited[0]?.id ?? limitedDriversRaw[0]?.id ?? mergedCurrentDriverId
+
+  let finalReplacementDriverId = raceDriversLimited.some((d) => d.id === mergedReplacementDriverId)
+    ? mergedReplacementDriverId
+    : raceDriversLimited[0]?.id ?? finalCurrentDriverId
+
+  if (finalReplacementDriverId === finalCurrentDriverId && raceDriversLimited.length > 1) {
+    finalReplacementDriverId = raceDriversLimited.find((d) => d.id !== finalCurrentDriverId)?.id ?? finalReplacementDriverId
+  }
+
   return {
-    drivers: mergedDrivers,
+    drivers: limitedDriversRaw,
     stints,
     events: mergedEvents,
     selectedEventId: mergedSelectedEventId,
-    currentDriverId: mergedCurrentDriverId,
-    replacementDriverId: mergedReplacementDriverId,
+    currentDriverId: finalCurrentDriverId,
+    replacementDriverId: finalReplacementDriverId,
     activeStintStartTime,
     pitEndTime,
     pitPrevDriverId,
@@ -325,6 +347,43 @@ function totalMsToMinutes(ms: number) {
   return ms / 60000
 }
 
+function limitOnRaceByTeamSize(drivers: Driver[], teamSize: number): Driver[] {
+  if (!Number.isFinite(teamSize) || teamSize <= 0) {
+    // 保底：至少保留 1 个上场（第一个）
+    return drivers.map((d, idx) => (idx === 0 ? { ...d, onRace: true } : { ...d, onRace: false }))
+  }
+
+  let kept = 0
+  return drivers.map((d) => {
+    if (!d.onRace) return d
+    kept += 1
+    if (kept <= teamSize) return d
+    return { ...d, onRace: false }
+  })
+}
+
+function applyTeamLimit(state: AppState): AppState {
+  const ev = state.events.find((e) => e.id === state.selectedEventId) ?? state.events[0] ?? { id: 'event-1', ...defaultEvent, teamSize: 1 }
+  const limitedDrivers = limitOnRaceByTeamSize(state.drivers, ev.teamSize)
+  let raceDrivers = limitedDrivers.filter((d) => d.onRace)
+  if (raceDrivers.length === 0 && limitedDrivers.length > 0) {
+    raceDrivers = [{ ...limitedDrivers[0], onRace: true }, ...limitedDrivers.slice(1).map((d) => ({ ...d, onRace: false }))]
+    limitedDrivers[0] = raceDrivers[0]
+  }
+
+  const currentDriverId = raceDrivers.some((d) => d.id === state.currentDriverId) ? state.currentDriverId : raceDrivers[0]?.id ?? state.currentDriverId
+
+  let replacementDriverId = raceDrivers.some((d) => d.id === state.replacementDriverId)
+    ? state.replacementDriverId
+    : raceDrivers[0]?.id ?? currentDriverId
+
+  if (replacementDriverId === currentDriverId && raceDrivers.length > 1) {
+    replacementDriverId = raceDrivers.find((d) => d.id !== currentDriverId)?.id ?? replacementDriverId
+  }
+
+  return { ...state, drivers: limitedDrivers, currentDriverId, replacementDriverId }
+}
+
 function getSelectedEvent(state: AppState): EventRule {
   return state.events.find((e) => e.id === state.selectedEventId) ?? state.events[0] ?? { id: 'event-1', ...defaultEvent }
 }
@@ -333,10 +392,13 @@ function reducer(state: AppState, action: Action): AppState {
   switch (action.type) {
     case 'ADD_DRIVER': {
       if (state.drivers.length >= MAX_DRIVERS) return state
-      return { ...state, drivers: [...state.drivers, action.driver] }
+      return applyTeamLimit({ ...state, drivers: [...state.drivers, action.driver] })
     }
     case 'UPDATE_DRIVER': {
-      return { ...state, drivers: state.drivers.map((d) => (d.id === action.id ? { ...d, ...action.patch } : d)) }
+      return applyTeamLimit({
+        ...state,
+        drivers: state.drivers.map((d) => (d.id === action.id ? { ...d, ...action.patch } : d)),
+      })
     }
     case 'REMOVE_DRIVER': {
       if (state.drivers.length <= MIN_DRIVERS) return state
@@ -352,7 +414,7 @@ function reducer(state: AppState, action: Action): AppState {
       const activeStintStartTime = state.currentDriverId === action.id ? null : state.activeStintStartTime
       const pitEndTime = state.pitPrevDriverId === action.id || state.pitNextDriverId === action.id ? null : state.pitEndTime
 
-      return {
+      return applyTeamLimit({
         ...state,
         drivers: nextDrivers,
         stints: nextStints,
@@ -364,7 +426,7 @@ function reducer(state: AppState, action: Action): AppState {
         pitNextDriverId: pitEndTime ? state.pitNextDriverId : null,
         pitCancelled: pitEndTime ? state.pitCancelled : false,
         stintPausedMs: pitEndTime ? state.stintPausedMs : null,
-      }
+      })
     }
 
     case 'SELECT_CURRENT_DRIVER':
@@ -385,10 +447,11 @@ function reducer(state: AppState, action: Action): AppState {
       return { ...state, events: nextEvents, selectedEventId: nextSelected }
     }
     case 'SELECT_EVENT':
-      return { ...state, selectedEventId: action.id }
+      return applyTeamLimit({ ...state, selectedEventId: action.id })
 
     case 'IMPORT_CONFIG': {
-      return {
+      return applyTeamLimit({
+        ...state,
         ...state,
         drivers: action.payload.drivers,
         events: action.payload.events,
@@ -402,7 +465,7 @@ function reducer(state: AppState, action: Action): AppState {
         stintPausedMs: null,
         currentDriverId: action.payload.drivers[0]?.id ?? state.currentDriverId,
         replacementDriverId: action.payload.drivers[1]?.id ?? action.payload.drivers[0]?.id ?? state.replacementDriverId,
-      }
+      })
     }
 
     case 'START_STINT': {
@@ -568,6 +631,21 @@ export default function App() {
     [state.drivers, state.replacementDriverId],
   )
   const raceDrivers = useMemo(() => state.drivers.filter((d) => d.onRace), [state.drivers])
+
+  const teamSizeLimit = selectedEvent.teamSize
+
+  const setDriverOnRace = (driverId: string, nextOnRace: boolean) => {
+    if (!nextOnRace) {
+      dispatch({ type: 'UPDATE_DRIVER', id: driverId, patch: { onRace: false } })
+      return
+    }
+    const othersOnRace = state.drivers.filter((d) => d.onRace && d.id !== driverId).length
+    if (othersOnRace >= teamSizeLimit) {
+      window.alert('上场人数已满')
+      return
+    }
+    dispatch({ type: 'UPDATE_DRIVER', id: driverId, patch: { onRace: true } })
+  }
 
   // 统计：由 stints 聚合
   const driverStats = useMemo(() => {
@@ -812,7 +890,6 @@ export default function App() {
         {tab === 'record' && (
           <>
             <h1>TFG RaceTimer</h1>
-            <h2 className="race-name">{selectedEvent.name}</h2>
           </>
         )}
 
@@ -862,7 +939,29 @@ export default function App() {
                         <input
                           type="checkbox"
                           checked={formDriverOnRace}
-                          onChange={(e) => setFormDriverOnRace(e.target.checked)}
+                          onChange={(e) => {
+                            const checked = e.target.checked
+                            if (!checked) {
+                              setFormDriverOnRace(false)
+                              return
+                            }
+                            if (formDriverMode === 'edit' && formDriverId) {
+                              const excluding = state.drivers.filter((d) => d.onRace && d.id !== formDriverId).length
+                              if (excluding >= teamSizeLimit) {
+                                window.alert('上场人数已满')
+                                setFormDriverOnRace(false)
+                                return
+                              }
+                            } else {
+                              // add 模式：新车手尚未加入 onRace 统计
+                              if (raceDrivers.length >= teamSizeLimit) {
+                                window.alert('上场人数已满')
+                                setFormDriverOnRace(false)
+                                return
+                              }
+                            }
+                            setFormDriverOnRace(true)
+                          }}
                           style={{ width: 18, height: 18 }}
                         />
                         本场上场
@@ -893,7 +992,7 @@ export default function App() {
                           <button
                             type="button"
                             className="btn-text"
-                            onClick={() => dispatch({ type: 'UPDATE_DRIVER', id: d.id, patch: { onRace: !d.onRace } })}
+                            onClick={() => setDriverOnRace(d.id, !d.onRace)}
                           >
                             {d.onRace ? '取消上场' : '设为上场'}
                           </button>
@@ -1053,9 +1152,7 @@ export default function App() {
               <div className="section-gap" />
 
               <div className="event-config">
-                <p className="hint" style={{ margin: '0 0 10px' }}>
-                  赛事配置：{selectedEvent.name}
-                </p>
+                <div className="race-config-title">赛事配置：{selectedEvent.name}</div>
                 <div className="event-config-grid">
                   <div>上场人数：{selectedEvent.teamSize} 人</div>
                   <div>总时长：{selectedEvent.raceDurationMinutes} 分钟</div>
