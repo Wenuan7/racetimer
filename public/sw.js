@@ -1,12 +1,14 @@
-const CACHE_NAME = 'kart-endurance-mvp-v1'
-const ASSETS = ['/', '/index.html', '/manifest.webmanifest', '/favicon.svg']
+const CACHE_NAME = 'kart-endurance-mvp-v2'
 
 self.addEventListener('install', (event) => {
-  event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => {
-      return cache.addAll(ASSETS)
-    }),
-  )
+  const base = self.registration.scope
+  const urls = [
+    base,
+    new URL('index.html', base).href,
+    new URL('manifest.webmanifest', base).href,
+    new URL('favicon.svg', base).href,
+  ]
+  event.waitUntil(caches.open(CACHE_NAME).then((cache) => cache.addAll(urls)))
   self.skipWaiting()
 })
 
