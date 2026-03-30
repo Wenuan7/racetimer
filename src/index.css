@@ -251,6 +251,19 @@ h2 {
   font-size: 18px;
 }
 
+.race-name {
+  margin: 6px 0 10px;
+  text-align: center;
+  font-size: 34px;
+  font-weight: 900;
+  color: #0f172a;
+  letter-spacing: -0.02em;
+}
+
+.section-gap {
+  height: 6px;
+}
+
 .card {
   background: #fff;
   border-radius: 12px;

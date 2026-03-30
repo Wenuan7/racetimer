@@ -248,17 +248,18 @@ function normalizeState(raw: unknown): AppState {
       ? Math.max(0, (obj as any).stintPausedMs as number)
       : null
 
-  // 自动补齐：如果旧存档缺少新预设车手/赛事，则追加/覆盖，避免你看到“预设不显示”
+  // 自动补齐：追加缺失的预设，并用预设覆盖已有同 ID 的车手（尤其是 onRace），避免你看到“预设不显示/上场人数不对”
   const presets = presetDrivers()
+  const presetById = new Map(presets.map((d) => [d.id, d] as const))
   const presetEvent: EventRule = { id: 'event-1', ...defaultEvent }
 
-  const mergedDrivers = [...drivers]
-  const driverIdSet = new Set(mergedDrivers.map((d) => d.id))
+  const mergedDrivers = drivers.map((d) => presetById.get(d.id) ?? d)
+  const mergedDriverIdSet = new Set(mergedDrivers.map((d) => d.id))
   for (const pd of presets) {
-    if (driverIdSet.has(pd.id)) continue
+    if (mergedDriverIdSet.has(pd.id)) continue
     if (mergedDrivers.length >= MAX_DRIVERS) break
     mergedDrivers.push(pd)
-    driverIdSet.add(pd.id)
+    mergedDriverIdSet.add(pd.id)
   }
 
   const mergedEvents = (() => {
@@ -811,9 +812,7 @@ export default function App() {
         {tab === 'record' && (
           <>
             <h1>TFG RaceTimer</h1>
-            <p className="focus mono" style={{ marginTop: 8 }}>
-              当前赛事：<strong>{selectedEvent.name}</strong>
-            </p>
+            <h2 className="race-name">{selectedEvent.name}</h2>
           </>
         )}
 
@@ -1051,7 +1050,7 @@ export default function App() {
         {tab === 'record' && (
           <>
             <section className="card">
-              <h2>换车记录</h2>
+              <div className="section-gap" />
 
               <div className="event-config">
                 <p className="hint" style={{ margin: '0 0 10px' }}>
