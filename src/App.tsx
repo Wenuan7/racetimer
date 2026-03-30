@@ -1036,7 +1036,10 @@ export default function App() {
       <main className="app">
         {tab === 'record' && (
           <>
-            <h1>TFG RaceTimer</h1>
+            <header className="manage-brand">
+              <h1 className="brand-title">TFG RaceTimer</h1>
+              <p className="brand-sub">记录</p>
+            </header>
           </>
         )}
 
