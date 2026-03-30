@@ -44,6 +44,9 @@ type AppState = {
   // 记录页：当前是否在驾驶（stint）
   activeStintStartTime: number | null
 
+  // 比赛开始时间（用于计算赛事剩余时间）
+  raceStartTime: number | null
+
   // 记录页：进站换车倒计时
   pitEndTime: number | null
   pitPrevDriverId: string | null
@@ -54,6 +57,12 @@ type AppState = {
 
   // 进站开始后：本棒计时暂停展示的毫秒值
   stintPausedMs: number | null
+
+  alerts: {
+    minDriveWarnedDriverIds: string[]
+    maxStintWarned: boolean
+    maxDriverWarnedDriverIds: string[]
+  }
 }
 
 type Action =
@@ -76,6 +85,9 @@ type Action =
   | { type: 'START_STINT'; now: number }
   | { type: 'END_STINT'; now: number }
   | { type: 'RESET_RACE_RECORD' }
+  | { type: 'MARK_MIN_DRIVE_WARNED'; driverId: string }
+  | { type: 'MARK_MAX_STINT_WARNED' }
+  | { type: 'MARK_MAX_DRIVER_WARNED'; driverId: string }
   | { type: 'START_PIT'; now: number }
   | { type: 'FINISH_PIT'; pitEndTime: number }
   | { type: 'CANCEL_PIT'; now: number }
@@ -130,12 +142,19 @@ const defaultState: AppState = {
   currentDriverId: 'driver-1',
   replacementDriverId: 'driver-2',
   activeStintStartTime: null,
+  raceStartTime: null,
   pitEndTime: null,
   pitPrevDriverId: null,
   pitNextDriverId: null,
 
   pitCancelled: false,
   stintPausedMs: null,
+
+  alerts: {
+    minDriveWarnedDriverIds: [],
+    maxStintWarned: false,
+    maxDriverWarnedDriverIds: [],
+  },
 }
 
 function normalizeState(raw: unknown): AppState {
@@ -237,6 +256,12 @@ function normalizeState(raw: unknown): AppState {
   // active stint & pit
   const activeStintStartTime = typeof (obj as any).activeStintStartTime === 'number' ? ((obj as any).activeStintStartTime as number) : null
 
+  const raceStartTimeRaw = (obj as any).raceStartTime
+  let raceStartTime = typeof raceStartTimeRaw === 'number' ? (raceStartTimeRaw as number) : null
+  if (raceStartTime === null && stints.length > 0) {
+    raceStartTime = Math.min(...stints.map((s) => s.startTime))
+  }
+
   const pitEndTime = typeof (obj as any).pitEndTime === 'number' ? ((obj as any).pitEndTime as number) : null
   const pitPrevDriverId = typeof (obj as any).pitPrevDriverId === 'string' ? ((obj as any).pitPrevDriverId as string) : null
   const pitNextDriverId = typeof (obj as any).pitNextDriverId === 'string' ? ((obj as any).pitNextDriverId as string) : null
@@ -247,6 +272,17 @@ function normalizeState(raw: unknown): AppState {
     typeof (obj as any).stintPausedMs === 'number'
       ? Math.max(0, (obj as any).stintPausedMs as number)
       : null
+
+  const alertsRaw = (obj as any).alerts
+  const alerts = {
+    minDriveWarnedDriverIds: Array.isArray(alertsRaw?.minDriveWarnedDriverIds)
+      ? (alertsRaw.minDriveWarnedDriverIds as unknown[]).map(String)
+      : [],
+    maxStintWarned: typeof alertsRaw?.maxStintWarned === 'boolean' ? (alertsRaw.maxStintWarned as boolean) : false,
+    maxDriverWarnedDriverIds: Array.isArray(alertsRaw?.maxDriverWarnedDriverIds)
+      ? (alertsRaw.maxDriverWarnedDriverIds as unknown[]).map(String)
+      : [],
+  }
 
   // 自动补齐：追加缺失的预设，并用预设覆盖已有同 ID 的车手（尤其是 onRace），避免你看到“预设不显示/上场人数不对”
   const presets = presetDrivers()
@@ -310,11 +346,13 @@ function normalizeState(raw: unknown): AppState {
     currentDriverId: finalCurrentDriverId,
     replacementDriverId: finalReplacementDriverId,
     activeStintStartTime,
+    raceStartTime,
     pitEndTime,
     pitPrevDriverId,
     pitNextDriverId,
     pitCancelled,
     stintPausedMs,
+    alerts,
   }
 }
 
@@ -458,11 +496,17 @@ function reducer(state: AppState, action: Action): AppState {
         selectedEventId: action.payload.selectedEventId,
         stints: [],
         activeStintStartTime: null,
+        raceStartTime: null,
         pitEndTime: null,
         pitPrevDriverId: null,
         pitNextDriverId: null,
         pitCancelled: false,
         stintPausedMs: null,
+        alerts: {
+          minDriveWarnedDriverIds: [],
+          maxStintWarned: false,
+          maxDriverWarnedDriverIds: [],
+        },
         currentDriverId: action.payload.drivers[0]?.id ?? state.currentDriverId,
         replacementDriverId: action.payload.drivers[1]?.id ?? action.payload.drivers[0]?.id ?? state.replacementDriverId,
       })
@@ -471,7 +515,7 @@ function reducer(state: AppState, action: Action): AppState {
     case 'START_STINT': {
       if (state.activeStintStartTime !== null) return state
       if (!state.currentDriverId) return state
-      return { ...state, activeStintStartTime: action.now }
+      return { ...state, activeStintStartTime: action.now, raceStartTime: state.raceStartTime ?? action.now }
     }
 
     case 'END_STINT': {
@@ -495,11 +539,42 @@ function reducer(state: AppState, action: Action): AppState {
         ...state,
         stints: [],
         activeStintStartTime: null,
+        raceStartTime: null,
         pitEndTime: null,
         pitPrevDriverId: null,
         pitNextDriverId: null,
         pitCancelled: false,
         stintPausedMs: null,
+        alerts: {
+          minDriveWarnedDriverIds: [],
+          maxStintWarned: false,
+          maxDriverWarnedDriverIds: [],
+        },
+      }
+    }
+
+    case 'MARK_MIN_DRIVE_WARNED': {
+      if (state.alerts.minDriveWarnedDriverIds.includes(action.driverId)) return state
+      return {
+        ...state,
+        alerts: {
+          ...state.alerts,
+          minDriveWarnedDriverIds: [...state.alerts.minDriveWarnedDriverIds, action.driverId],
+        },
+      }
+    }
+    case 'MARK_MAX_STINT_WARNED': {
+      if (state.alerts.maxStintWarned) return state
+      return { ...state, alerts: { ...state.alerts, maxStintWarned: true } }
+    }
+    case 'MARK_MAX_DRIVER_WARNED': {
+      if (state.alerts.maxDriverWarnedDriverIds.includes(action.driverId)) return state
+      return {
+        ...state,
+        alerts: {
+          ...state.alerts,
+          maxDriverWarnedDriverIds: [...state.alerts.maxDriverWarnedDriverIds, action.driverId],
+        },
       }
     }
 
@@ -625,6 +700,16 @@ export default function App() {
     return Math.max(0, now - state.activeStintStartTime)
   }, [now, state.activeStintStartTime])
 
+  const raceElapsedMs = useMemo(() => {
+    if (state.raceStartTime === null) return 0
+    return Math.max(0, now - state.raceStartTime)
+  }, [now, state.raceStartTime])
+
+  const raceRemainingMs = useMemo(() => {
+    const total = Math.max(0, Math.floor(selectedEvent.raceDurationMinutes * 60000))
+    return Math.max(0, total - raceElapsedMs)
+  }, [selectedEvent.raceDurationMinutes, raceElapsedMs])
+
   const currentDriver = useMemo(() => state.drivers.find((d) => d.id === state.currentDriverId) ?? null, [state.drivers, state.currentDriverId])
   const replacementDriver = useMemo(
     () => state.drivers.find((d) => d.id === state.replacementDriverId) ?? null,
@@ -658,6 +743,68 @@ export default function App() {
     }
     return totals
   }, [state.stints])
+
+  const currentDriverTotalMs = useMemo(() => {
+    const base = driverStats.get(state.currentDriverId)?.totalTime ?? 0
+    return base + (state.activeStintStartTime !== null ? activeStintMs : 0)
+  }, [driverStats, state.currentDriverId, state.activeStintStartTime, activeStintMs])
+
+  // 弹窗告警（只提示一次）
+  useEffect(() => {
+    // 1) 赛事剩余时间不足以满足某选手最低驾驶 + 10 分钟缓冲
+    if (state.raceStartTime !== null) {
+      const bufferMs = 10 * 60000
+      const minNeedByDriver = raceDrivers
+        .map((d) => {
+          const done = driverStats.get(d.id)?.totalTime ?? 0
+          const need = Math.max(0, selectedEvent.minDriveTimeMinutes * 60000 - done)
+          return { driverId: d.id, name: d.name, needMs: need }
+        })
+        .filter((x) => x.needMs > 0)
+      for (const item of minNeedByDriver) {
+        if (state.alerts.minDriveWarnedDriverIds.includes(item.driverId)) continue
+        if (raceRemainingMs <= item.needMs + bufferMs) {
+          window.alert(`提醒：赛事剩余时间不足。\n${item.name} 还差最低驾驶 ${Math.ceil(item.needMs / 60000)} 分钟，剩余时间已接近（+10分钟缓冲）。`)
+          dispatch({ type: 'MARK_MIN_DRIVE_WARNED', driverId: item.driverId })
+          break
+        }
+      }
+    }
+
+    // 2) 单棒最高时间剩余 10 分钟
+    if (state.activeStintStartTime !== null) {
+      const remainMs = selectedEvent.maxStintMinutes * 60000 - activeStintMs
+      if (!state.alerts.maxStintWarned && remainMs > 0 && remainMs <= 10 * 60000) {
+        window.alert('提醒：距离单棒最高时间仅剩 10 分钟。')
+        dispatch({ type: 'MARK_MAX_STINT_WARNED' })
+      }
+    }
+
+    // 3) 个人最高时间剩余 10 分钟（当前驾驶车手）
+    if (currentDriver && currentDriver.onRace) {
+      const remainMs = selectedEvent.maxDriveTimeMinutes * 60000 - currentDriverTotalMs
+      if (!state.alerts.maxDriverWarnedDriverIds.includes(currentDriver.id) && remainMs > 0 && remainMs <= 10 * 60000) {
+        window.alert(`提醒：${currentDriver.name} 距离个人最高驾驶时间仅剩 10 分钟。`)
+        dispatch({ type: 'MARK_MAX_DRIVER_WARNED', driverId: currentDriver.id })
+      }
+    }
+  }, [
+    now,
+    state.raceStartTime,
+    raceRemainingMs,
+    raceDrivers,
+    driverStats,
+    selectedEvent.minDriveTimeMinutes,
+    selectedEvent.maxStintMinutes,
+    selectedEvent.maxDriveTimeMinutes,
+    state.activeStintStartTime,
+    activeStintMs,
+    currentDriver,
+    currentDriverTotalMs,
+    state.alerts.minDriveWarnedDriverIds,
+    state.alerts.maxStintWarned,
+    state.alerts.maxDriverWarnedDriverIds,
+  ])
 
   useEffect(() => {
     if (raceDrivers.length === 0) return
@@ -1259,6 +1406,28 @@ export default function App() {
 
             <section className="card">
               <h2>统计</h2>
+
+              <div className="warn-board">
+                {state.activeStintStartTime !== null && (
+                  (() => {
+                    const remain = selectedEvent.maxStintMinutes * 60000 - activeStintMs
+                    if (remain > 0 && remain <= 10 * 60000) {
+                      return <div className="warn-line">⚠ 距离单棒最高时间仅剩 10 分钟</div>
+                    }
+                    return null
+                  })()
+                )}
+                {currentDriver && currentDriver.onRace && (
+                  (() => {
+                    const remain = selectedEvent.maxDriveTimeMinutes * 60000 - currentDriverTotalMs
+                    if (remain > 0 && remain <= 10 * 60000) {
+                      return <div className="warn-line">⚠ {currentDriver.name} 距离个人最高驾驶时间仅剩 10 分钟</div>
+                    }
+                    return null
+                  })()
+                )}
+              </div>
+
               <div className="stats">
                 {raceDrivers.map((d) => {
                   const stat = driverStats.get(d.id) ?? { totalTime: 0, stintCount: 0 }

@@ -262,11 +262,27 @@ h2 {
 
 .race-config-title {
   margin: 6px 0 10px;
-  text-align: center;
-  font-size: 26px;
+  text-align: left;
+  font-size: 18px;
   font-weight: 900;
   color: #0f172a;
   letter-spacing: -0.02em;
+}
+
+.warn-board {
+  margin: 8px 0 12px;
+  display: grid;
+  gap: 8px;
+}
+
+.warn-line {
+  border: 1px solid #fecaca;
+  background: #fff1f2;
+  color: #9f1239;
+  border-radius: 10px;
+  padding: 10px;
+  font-weight: 900;
+  font-size: 14px;
 }
 
 .section-gap {
