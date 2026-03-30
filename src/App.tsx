@@ -1,24 +1,23 @@
 import { useEffect, useMemo, useReducer, useState } from 'react'
 
-/** Driver.totalTime、Stint.duration 均为毫秒 */
 type Driver = {
   id: string
   name: string
   age: number
-  bloodType: string
+  bloodType: string // 可为空
   weight: number
-  totalTime: number
-  stintCount: number
 }
 
 type Stint = {
   driverId: string
   startTime: number
   endTime: number
-  duration: number
+  duration: number // 毫秒
 }
 
-type Config = {
+type EventRule = {
+  id: string
+  name: string
   raceDurationMinutes: number
   minStints: number
   maxStintMinutes: number
@@ -27,28 +26,36 @@ type Config = {
 }
 
 type AppState = {
-  config: Config
   drivers: Driver[]
   stints: Stint[]
+  events: EventRule[]
+  selectedEventId: string
   currentDriverId: string
   activeStintStartTime: number | null
 }
 
 type Action =
-  | { type: 'SET_CONFIG_NUMBER'; field: keyof Config; value: number }
   | { type: 'ADD_DRIVER'; driver: Driver }
   | { type: 'UPDATE_DRIVER'; id: string; patch: Partial<Pick<Driver, 'name' | 'age' | 'bloodType' | 'weight'>> }
   | { type: 'REMOVE_DRIVER'; id: string }
   | { type: 'SELECT_DRIVER'; driverId: string }
+  | { type: 'ADD_EVENT'; event: EventRule }
+  | { type: 'UPDATE_EVENT'; id: string; patch: Partial<Omit<EventRule, 'id'>> }
+  | { type: 'REMOVE_EVENT'; id: string }
+  | { type: 'SELECT_EVENT'; id: string }
+  | { type: 'IMPORT_CONFIG'; payload: { drivers: Driver[]; events: EventRule[]; selectedEventId: string } }
   | { type: 'START_STINT'; now: number }
   | { type: 'END_STINT'; now: number }
 
 const STORAGE_KEY = 'kart-endurance-mvp-state'
-const PERSIST_VERSION = 2
+const PERSIST_VERSION = 3
 const MAX_DRIVERS = 10
 const MIN_DRIVERS = 1
+const MAX_EVENTS = 10
+const MIN_EVENTS = 1
 
-const defaultConfig: Config = {
+const defaultEvent: Omit<EventRule, 'id'> = {
+  name: '默认赛事',
   raceDurationMinutes: 180,
   minStints: 6,
   maxStintMinutes: 30,
@@ -61,105 +68,123 @@ function finiteNum(v: unknown, fallback: number): number {
   return Number.isFinite(n) ? n : fallback
 }
 
+function createId(prefix: string): string {
+  return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`
+}
+
 function createDefaultDrivers(): Driver[] {
   return [
-    { id: 'driver-1', name: '车手1', age: 18, bloodType: '', weight: 65, totalTime: 0, stintCount: 0 },
-    { id: 'driver-2', name: '车手2', age: 20, bloodType: '', weight: 60, totalTime: 0, stintCount: 0 },
-    { id: 'driver-3', name: '车手3', age: 22, bloodType: 'A', weight: 58, totalTime: 0, stintCount: 0 },
+    { id: 'driver-1', name: '车手1', age: 18, bloodType: '', weight: 65 },
+    { id: 'driver-2', name: '车手2', age: 20, bloodType: '', weight: 60 },
+    { id: 'driver-3', name: '车手3', age: 22, bloodType: 'A', weight: 58 },
   ]
 }
 
 const defaultState: AppState = {
-  config: defaultConfig,
   drivers: createDefaultDrivers(),
   stints: [],
+  events: [{ id: 'event-1', ...defaultEvent }],
+  selectedEventId: 'event-1',
   currentDriverId: 'driver-1',
   activeStintStartTime: null,
 }
 
 function normalizeState(raw: unknown): AppState {
-  if (!raw || typeof raw !== 'object') {
-    return defaultState
-  }
-
+  if (!raw || typeof raw !== 'object') return defaultState
   const obj = raw as Record<string, unknown>
   const version = typeof obj.persistVersion === 'number' ? obj.persistVersion : 1
-  const maybeState = obj as Partial<AppState>
-  const oldConfig = maybeState.config as Record<string, unknown> | undefined
 
-  const config: Config = {
-    raceDurationMinutes: finiteNum(oldConfig?.raceDurationMinutes, defaultConfig.raceDurationMinutes),
-    minStints: finiteNum(oldConfig?.minStints, defaultConfig.minStints),
-    maxStintMinutes: finiteNum(oldConfig?.maxStintMinutes, defaultConfig.maxStintMinutes),
-    minDriveTimeMinutes: finiteNum(oldConfig?.minDriveTimeMinutes, defaultConfig.minDriveTimeMinutes),
-    maxDriveTimeMinutes: finiteNum(oldConfig?.maxDriveTimeMinutes, defaultConfig.maxDriveTimeMinutes),
-  }
+  // Drivers (兼容旧：可能带 totalTime/stintCount)
+  const maybeDrivers = Array.isArray((obj as any).drivers) ? ((obj as any).drivers as unknown[]) : []
+  const drivers: Driver[] =
+    maybeDrivers.length > 0
+      ? maybeDrivers.map((item, index) => {
+          const d = item as Partial<Driver> & Record<string, unknown>
+          return {
+            id: String(d.id || `driver-${index + 1}`),
+            name: String(d.name || `车手${index + 1}`),
+            age: finiteNum(d.age, 0),
+            bloodType: typeof d.bloodType === 'string' ? d.bloodType : '',
+            weight: finiteNum(d.weight, 0),
+          }
+        })
+      : createDefaultDrivers()
 
-  let drivers: Driver[] = []
-  if (Array.isArray(maybeState.drivers) && maybeState.drivers.length > 0) {
-    drivers = maybeState.drivers.map((item, index) => {
-      const d = item as Partial<Driver>
-      let totalTime = Number(d.totalTime) || 0
-      if (version < 2) {
-        totalTime *= 1000
-      }
+  const safeDrivers = drivers.length > 0 ? drivers : createDefaultDrivers()
+
+  // Events (兼容旧：只有 config)
+  let events: EventRule[] = []
+  const maybeEvents = (obj as any).events
+  if (Array.isArray(maybeEvents) && maybeEvents.length > 0) {
+    events = maybeEvents.map((item, index) => {
+      const e = item as Partial<EventRule> & Record<string, unknown>
       return {
-        id: String(d.id || `driver-${index + 1}`),
-        name: String(d.name || `车手${index + 1}`),
-        age: Number(d.age) || 0,
-        bloodType: typeof d.bloodType === 'string' ? d.bloodType : '',
-        weight: Number(d.weight) || 0,
-        totalTime,
-        stintCount: Number(d.stintCount) || 0,
+        id: String(e.id || `event-${index + 1}`),
+        name: String(e.name || `赛事${index + 1}`),
+        raceDurationMinutes: finiteNum(e.raceDurationMinutes, defaultEvent.raceDurationMinutes),
+        minStints: finiteNum(e.minStints, defaultEvent.minStints),
+        maxStintMinutes: finiteNum(e.maxStintMinutes, defaultEvent.maxStintMinutes),
+        minDriveTimeMinutes: finiteNum(e.minDriveTimeMinutes, defaultEvent.minDriveTimeMinutes),
+        maxDriveTimeMinutes: finiteNum(e.maxDriveTimeMinutes, defaultEvent.maxDriveTimeMinutes),
       }
     })
+  } else if ((obj as any).config && typeof (obj as any).config === 'object') {
+    const cfg = (obj as any).config as Record<string, unknown>
+    events = [
+      {
+        id: 'event-1',
+        name: '默认赛事',
+        raceDurationMinutes: finiteNum(cfg.raceDurationMinutes, defaultEvent.raceDurationMinutes),
+        minStints: finiteNum(cfg.minStints, defaultEvent.minStints),
+        maxStintMinutes: finiteNum(cfg.maxStintMinutes, defaultEvent.maxStintMinutes),
+        minDriveTimeMinutes: finiteNum(cfg.minDriveTimeMinutes, defaultEvent.minDriveTimeMinutes),
+        maxDriveTimeMinutes: finiteNum(cfg.maxDriveTimeMinutes, defaultEvent.maxDriveTimeMinutes),
+      },
+    ]
   } else {
-    drivers = createDefaultDrivers()
+    events = [{ id: 'event-1', ...defaultEvent }]
   }
 
-  let stints: Stint[] = []
-  if (Array.isArray(maybeState.stints)) {
-    stints = maybeState.stints.map((item) => {
-      const s = item as Partial<Stint>
-      let duration = Number(s.duration) || 0
-      if (version < 2) {
-        duration *= 1000
-      }
-      return {
-        driverId: String(s.driverId || ''),
-        startTime: Number(s.startTime) || 0,
-        endTime: Number(s.endTime) || 0,
-        duration,
-      }
-    })
-  }
+  if (events.length === 0) events = [{ id: 'event-1', ...defaultEvent }]
 
-  const ids = new Set<string>()
-  drivers = drivers.map((d, i) => {
-    let id = d.id
-    let n = 0
-    while (ids.has(id)) {
-      id = `driver-${i}-${Date.now()}-${n}`
-      n += 1
-    }
-    ids.add(id)
-    return { ...d, id }
-  })
+  const selectedEventIdRaw = (obj as any).selectedEventId
+  const selectedEventId =
+    typeof selectedEventIdRaw === 'string' && events.some((e) => e.id === selectedEventIdRaw)
+      ? selectedEventIdRaw
+      : events[0].id
 
-  if (drivers.length === 0) {
-    return defaultState
-  }
+  // stints (兼容旧版本：可能 duration 为秒)
+  const maybeStints = (obj as any).stints
+  const stints: Stint[] = Array.isArray(maybeStints)
+    ? maybeStints.map((item) => {
+        const s = item as Partial<Stint> & Record<string, unknown>
+        let duration = finiteNum(s.duration, 0)
+        if (version < 2) duration *= 1000
+        return {
+          driverId: String(s.driverId || ''),
+          startTime: finiteNum(s.startTime, 0),
+          endTime: finiteNum(s.endTime, 0),
+          duration,
+        }
+      })
+    : []
 
-  const currentExists = drivers.some((d) => d.id === maybeState.currentDriverId)
-  const currentDriverId = currentExists ? String(maybeState.currentDriverId) : drivers[0].id
+  const currentDriverIdRaw = (obj as any).currentDriverId
+  const currentDriverId =
+    typeof currentDriverIdRaw === 'string' && safeDrivers.some((d) => d.id === currentDriverIdRaw)
+      ? currentDriverIdRaw
+      : safeDrivers[0].id
+
+  const active =
+    typeof (obj as any).activeStintStartTime === 'number' ? ((obj as any).activeStintStartTime as number) : null
 
   return {
-    config,
-    drivers,
+    drivers: safeDrivers,
     stints,
+    events,
+    selectedEventId,
     currentDriverId,
-    activeStintStartTime:
-      typeof maybeState.activeStintStartTime === 'number' ? maybeState.activeStintStartTime : null,
+    activeStintStartTime: active,
   }
 }
 
@@ -171,69 +196,66 @@ function safeNormalizeState(raw: unknown): AppState {
   }
 }
 
-function createDriverId(): string {
-  return `driver-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`
-}
-
 function reducer(state: AppState, action: Action): AppState {
   switch (action.type) {
-    case 'SET_CONFIG_NUMBER': {
-      const v = Number(action.value)
-      if (!Number.isFinite(v)) {
-        return state
-      }
-      return {
-        ...state,
-        config: {
-          ...state.config,
-          [action.field]: v,
-        },
-      }
-    }
     case 'ADD_DRIVER': {
-      if (state.drivers.length >= MAX_DRIVERS) {
-        return state
-      }
-      return {
-        ...state,
-        drivers: [...state.drivers, action.driver],
-      }
+      if (state.drivers.length >= MAX_DRIVERS) return state
+      return { ...state, drivers: [...state.drivers, action.driver] }
     }
     case 'UPDATE_DRIVER':
-      return {
-        ...state,
-        drivers: state.drivers.map((d) => (d.id === action.id ? { ...d, ...action.patch } : d)),
-      }
+      return { ...state, drivers: state.drivers.map((d) => (d.id === action.id ? { ...d, ...action.patch } : d)) }
     case 'REMOVE_DRIVER': {
-      if (state.drivers.length <= MIN_DRIVERS) {
-        return state
-      }
+      if (state.drivers.length <= MIN_DRIVERS) return state
       const nextDrivers = state.drivers.filter((d) => d.id !== action.id)
-      const nextCurrent =
-        state.currentDriverId === action.id ? nextDrivers[0].id : state.currentDriverId
       return {
         ...state,
         drivers: nextDrivers,
         stints: state.stints.filter((s) => s.driverId !== action.id),
-        currentDriverId: nextCurrent,
-        activeStintStartTime:
-          state.currentDriverId === action.id ? null : state.activeStintStartTime,
+        currentDriverId: state.currentDriverId === action.id ? nextDrivers[0].id : state.currentDriverId,
+        activeStintStartTime: state.currentDriverId === action.id ? null : state.activeStintStartTime,
       }
     }
     case 'SELECT_DRIVER':
       return { ...state, currentDriverId: action.driverId }
-    case 'START_STINT':
-      if (state.activeStintStartTime !== null) {
-        return state
+
+    case 'ADD_EVENT': {
+      if (state.events.length >= MAX_EVENTS) return state
+      return { ...state, events: [...state.events, action.event] }
+    }
+    case 'UPDATE_EVENT':
+      return { ...state, events: state.events.map((e) => (e.id === action.id ? { ...e, ...action.patch } : e)) }
+    case 'REMOVE_EVENT': {
+      if (state.events.length <= MIN_EVENTS) return state
+      const nextEvents = state.events.filter((e) => e.id !== action.id)
+      return {
+        ...state,
+        events: nextEvents,
+        selectedEventId: state.selectedEventId === action.id ? nextEvents[0].id : state.selectedEventId,
       }
+    }
+    case 'SELECT_EVENT':
+      return { ...state, selectedEventId: action.id }
+
+    case 'IMPORT_CONFIG': {
+      const drivers = action.payload.drivers.length > 0 ? action.payload.drivers : createDefaultDrivers()
+      const events = action.payload.events.length > 0 ? action.payload.events : [{ id: 'event-1', ...defaultEvent }]
+      const selectedEventId = events.some((e) => e.id === action.payload.selectedEventId) ? action.payload.selectedEventId : events[0].id
+      return {
+        ...state,
+        drivers,
+        events,
+        selectedEventId,
+        currentDriverId: drivers[0].id,
+        stints: [],
+        activeStintStartTime: null,
+      }
+    }
+
+    case 'START_STINT':
+      if (state.activeStintStartTime !== null) return state
       return { ...state, activeStintStartTime: action.now }
     case 'END_STINT': {
-      if (state.activeStintStartTime === null) {
-        return state
-      }
-      if (!state.currentDriverId) {
-        return { ...state, activeStintStartTime: null }
-      }
+      if (state.activeStintStartTime === null) return state
       const duration = Math.max(0, action.now - state.activeStintStartTime)
       return {
         ...state,
@@ -247,27 +269,16 @@ function reducer(state: AppState, action: Action): AppState {
             duration,
           },
         ],
-        drivers: state.drivers.map((driver) =>
-          driver.id === state.currentDriverId
-            ? {
-                ...driver,
-                totalTime: driver.totalTime + duration,
-                stintCount: driver.stintCount + 1,
-              }
-            : driver,
-        ),
       }
     }
+
     default:
       return state
   }
 }
 
-/** 显示为 mm:ss.SSS，超过 1 小时为 h:mm:ss.SSS */
 function formatDurationMs(ms: number): string {
-  if (!Number.isFinite(ms)) {
-    return '0:00.000'
-  }
+  if (!Number.isFinite(ms)) return '0:00.000'
   const t = Math.max(0, Math.floor(ms))
   const milli = t % 1000
   const totalSec = Math.floor(t / 1000)
@@ -278,23 +289,19 @@ function formatDurationMs(ms: number): string {
   const msStr = String(milli).padStart(3, '0')
   const sStr = String(sec).padStart(2, '0')
   const mStr = String(min).padStart(2, '0')
-  if (hour > 0) {
-    return `${hour}:${mStr}:${sStr}.${msStr}`
-  }
+  if (hour > 0) return `${hour}:${mStr}:${sStr}.${msStr}`
   return `${totalMin}:${sStr}.${msStr}`
 }
 
 function totalMsToMinutes(ms: number): number {
-  if (!Number.isFinite(ms)) {
-    return 0
-  }
+  if (!Number.isFinite(ms)) return 0
   return ms / 60000
 }
 
 type TabId = 'record' | 'manage'
-type ManagePanel = 'drivers' | 'event' | null
+type ManagePanel = 'drivers' | 'events' | null
 
-function App() {
+export default function App() {
   const [state, dispatch] = useReducer(reducer, defaultState, () => {
     try {
       const saved = localStorage.getItem(STORAGE_KEY)
@@ -303,103 +310,117 @@ function App() {
       return defaultState
     }
   })
+
   const [tab, setTab] = useState<TabId>('record')
   const [managePanel, setManagePanel] = useState<ManagePanel>('drivers')
   const [now, setNow] = useState(Date.now())
 
-  const [formMode, setFormMode] = useState<'add' | 'edit' | null>(null)
-  const [editId, setEditId] = useState<string | null>(null)
-  const [formName, setFormName] = useState('')
-  const [formAge, setFormAge] = useState('')
-  const [formBlood, setFormBlood] = useState('')
-  const [formWeight, setFormWeight] = useState('')
+  // 管理页表单状态
+  const [formDriverMode, setFormDriverMode] = useState<'add' | 'edit' | null>(null)
+  const [formDriverId, setFormDriverId] = useState<string | null>(null)
+  const [formDriverName, setFormDriverName] = useState('')
+  const [formDriverAge, setFormDriverAge] = useState('')
+  const [formDriverBlood, setFormDriverBlood] = useState('')
+  const [formDriverWeight, setFormDriverWeight] = useState('')
+
+  const [formEventMode, setFormEventMode] = useState<'add' | 'edit' | null>(null)
+  const [formEventId, setFormEventId] = useState<string | null>(null)
+  const [formEventName, setFormEventName] = useState('')
+  const [formRaceDurationMinutes, setFormRaceDurationMinutes] = useState('')
+  const [formMinStints, setFormMinStints] = useState('')
+  const [formMaxStintMinutes, setFormMaxStintMinutes] = useState('')
+  const [formMinDriveTimeMinutes, setFormMinDriveTimeMinutes] = useState('')
+  const [formMaxDriveTimeMinutes, setFormMaxDriveTimeMinutes] = useState('')
+
+  // 配置导出/导入
+  const [exportText, setExportText] = useState('')
+  const [importText, setImportText] = useState('')
 
   useEffect(() => {
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify({ persistVersion: PERSIST_VERSION, ...state }))
     } catch {
-      // 存储失败（隐私模式/配额满）不应导致整页崩溃
+      // ignore
     }
   }, [state])
 
+  // 用于“当前进行中的本棒显示”，不是拿来做计时累加（真正时长仍用 Date.now() 差值）
   useEffect(() => {
-    if (state.drivers.length === 0) {
-      return
+    const timer = window.setInterval(() => setNow(Date.now()), 50)
+    return () => window.clearInterval(timer)
+  }, [])
+
+  const selectedEvent = useMemo(
+    () => state.events.find((e) => e.id === state.selectedEventId) ?? state.events[0],
+    [state.events, state.selectedEventId],
+  )
+
+  // 由 stints 动态计算累计时间与棒次数
+  const driverStats = useMemo(() => {
+    const totals = new Map<string, { totalTime: number; stintCount: number }>()
+    for (const s of state.stints) {
+      const cur = totals.get(s.driverId) ?? { totalTime: 0, stintCount: 0 }
+      cur.totalTime += s.duration
+      cur.stintCount += 1
+      totals.set(s.driverId, cur)
     }
+    return totals
+  }, [state.stints])
+
+  useEffect(() => {
+    if (state.drivers.length === 0) return
     if (!state.drivers.some((d) => d.id === state.currentDriverId)) {
       dispatch({ type: 'SELECT_DRIVER', driverId: state.drivers[0].id })
     }
   }, [state.drivers, state.currentDriverId])
 
-  useEffect(() => {
-    const timer = window.setInterval(() => {
-      setNow(Date.now())
-    }, 50)
-    return () => window.clearInterval(timer)
-  }, [])
-
   const activeStintMs = useMemo(() => {
-    if (state.activeStintStartTime === null) {
-      return 0
-    }
+    if (state.activeStintStartTime === null) return 0
     return Math.max(0, now - state.activeStintStartTime)
   }, [now, state.activeStintStartTime])
 
-  const selectedDriver = state.drivers.find((driver) => driver.id === state.currentDriverId)
+  const selectedDriver = useMemo(
+    () => state.drivers.find((d) => d.id === state.currentDriverId) ?? state.drivers[0],
+    [state.drivers, state.currentDriverId],
+  )
 
-  const openAddForm = () => {
-    setFormMode('add')
-    setEditId(null)
-    setFormName('')
-    setFormAge('')
-    setFormBlood('')
-    setFormWeight('')
+  const openAddDriver = () => {
+    setFormDriverMode('add')
+    setFormDriverId(null)
+    setFormDriverName('')
+    setFormDriverAge('')
+    setFormDriverBlood('')
+    setFormDriverWeight('')
   }
-
-  const openEditForm = (d: Driver) => {
-    setFormMode('edit')
-    setEditId(d.id)
-    setFormName(d.name)
-    setFormAge(String(d.age))
-    setFormBlood(d.bloodType)
-    setFormWeight(String(d.weight))
+  const openEditDriver = (d: Driver) => {
+    setFormDriverMode('edit')
+    setFormDriverId(d.id)
+    setFormDriverName(d.name)
+    setFormDriverAge(String(d.age))
+    setFormDriverBlood(d.bloodType)
+    setFormDriverWeight(String(d.weight))
   }
-
-  const closeForm = () => {
-    setFormMode(null)
-    setEditId(null)
-  }
-
+  const closeDriverForm = () => setFormDriverMode(null)
   const submitDriverForm = () => {
-    const name = formName.trim() || '未命名车手'
-    const age = Math.max(0, Math.floor(Number(formAge) || 0))
-    const bloodType = formBlood.trim()
-    const weight = Math.max(0, Number(formWeight) || 0)
+    const name = formDriverName.trim() || '未命名车手'
+    const age = Math.max(0, Math.floor(Number(formDriverAge) || 0))
+    const bloodType = formDriverBlood.trim()
+    const weight = Math.max(0, Number(formDriverWeight) || 0)
 
-    if (formMode === 'add') {
-      if (state.drivers.length >= MAX_DRIVERS) {
-        return
-      }
+    if (formDriverMode === 'add') {
+      if (state.drivers.length >= MAX_DRIVERS) return
       dispatch({
         type: 'ADD_DRIVER',
-        driver: {
-          id: createDriverId(),
-          name,
-          age,
-          bloodType,
-          weight,
-          totalTime: 0,
-          stintCount: 0,
-        },
+        driver: { id: createId('driver'), name, age, bloodType, weight },
       })
-    } else if (formMode === 'edit' && editId) {
+    } else if (formDriverMode === 'edit' && formDriverId) {
       dispatch({
         type: 'UPDATE_DRIVER',
-        id: editId,
+        id: formDriverId,
         patch: { name, age, bloodType, weight },
       })
     }
-    closeForm()
+    closeDriverForm()
   }
 
   const removeDriver = (id: string) => {
@@ -407,10 +428,116 @@ function App() {
       window.alert(`至少保留 ${MIN_DRIVERS} 名车手`)
       return
     }
-    if (!window.confirm('确定删除该车手？该车手的累计时间与棒次记录将一并删除，且无法恢复。')) {
+    if (!window.confirm('确定删除该车手？计时记录中的该车手棒次也会被移除。')) return
+    dispatch({ type: 'REMOVE_DRIVER', id })
+  }
+
+  const openAddEvent = () => {
+    setFormEventMode('add')
+    setFormEventId(null)
+    setFormEventName('')
+    setFormRaceDurationMinutes('')
+    setFormMinStints('')
+    setFormMaxStintMinutes('')
+    setFormMinDriveTimeMinutes('')
+    setFormMaxDriveTimeMinutes('')
+  }
+  const openEditEvent = (e: EventRule) => {
+    setFormEventMode('edit')
+    setFormEventId(e.id)
+    setFormEventName(e.name)
+    setFormRaceDurationMinutes(String(e.raceDurationMinutes))
+    setFormMinStints(String(e.minStints))
+    setFormMaxStintMinutes(String(e.maxStintMinutes))
+    setFormMinDriveTimeMinutes(String(e.minDriveTimeMinutes))
+    setFormMaxDriveTimeMinutes(String(e.maxDriveTimeMinutes))
+  }
+  const closeEventForm = () => setFormEventMode(null)
+  const submitEventForm = () => {
+    const name = formEventName.trim() || '未命名赛事'
+    const raceDurationMinutes = Math.max(1, Math.floor(Number(formRaceDurationMinutes) || 0))
+    const minStints = Math.max(0, Math.floor(Number(formMinStints) || 0))
+    const maxStintMinutes = Math.max(1, Number(formMaxStintMinutes) || 0)
+    const minDriveTimeMinutes = Math.max(0, Number(formMinDriveTimeMinutes) || 0)
+    const maxDriveTimeMinutes = Math.max(1, Number(formMaxDriveTimeMinutes) || 0)
+
+    if (formEventMode === 'add') {
+      if (state.events.length >= MAX_EVENTS) return
+      dispatch({
+        type: 'ADD_EVENT',
+        event: {
+          id: createId('event'),
+          name,
+          raceDurationMinutes,
+          minStints,
+          maxStintMinutes,
+          minDriveTimeMinutes,
+          maxDriveTimeMinutes,
+        },
+      })
+    } else if (formEventMode === 'edit' && formEventId) {
+      dispatch({
+        type: 'UPDATE_EVENT',
+        id: formEventId,
+        patch: { name, raceDurationMinutes, minStints, maxStintMinutes, minDriveTimeMinutes, maxDriveTimeMinutes },
+      })
+    }
+    closeEventForm()
+  }
+  const removeEvent = (id: string) => {
+    if (state.events.length <= MIN_EVENTS) {
+      window.alert(`至少保留 ${MIN_EVENTS} 个赛事`)
       return
     }
-    dispatch({ type: 'REMOVE_DRIVER', id })
+    if (!window.confirm('确定删除该赛事？')) return
+    dispatch({ type: 'REMOVE_EVENT', id })
+  }
+
+  const exportConfig = () => {
+    const payload = {
+      persistVersion: PERSIST_VERSION,
+      drivers: state.drivers,
+      events: state.events,
+      selectedEventId: state.selectedEventId,
+    }
+    const text = JSON.stringify(payload, null, 2)
+    setExportText(text)
+    setImportText(text)
+  }
+
+  const importConfig = () => {
+    try {
+      const parsed = JSON.parse(importText)
+      if (!parsed || typeof parsed !== 'object') throw new Error('invalid')
+      const driversArr = Array.isArray(parsed.drivers) ? (parsed.drivers as unknown[]) : []
+      const eventsArr = Array.isArray(parsed.events) ? (parsed.events as unknown[]) : []
+      if (driversArr.length === 0) throw new Error('drivers missing')
+      if (eventsArr.length === 0) throw new Error('events missing')
+
+      const drivers: Driver[] = driversArr.map((d: any, index) => ({
+        id: String(d.id || `driver-${index + 1}`),
+        name: String(d.name || `车手${index + 1}`),
+        age: Math.max(0, Math.floor(Number(d.age) || 0)),
+        bloodType: typeof d.bloodType === 'string' ? d.bloodType : '',
+        weight: Math.max(0, Number(d.weight) || 0),
+      }))
+
+      const events: EventRule[] = eventsArr.map((e: any, index) => ({
+        id: String(e.id || `event-${index + 1}`),
+        name: String(e.name || `赛事${index + 1}`),
+        raceDurationMinutes: Math.max(1, Number(e.raceDurationMinutes) || defaultEvent.raceDurationMinutes),
+        minStints: Math.max(0, Math.floor(Number(e.minStints) || defaultEvent.minStints)),
+        maxStintMinutes: Math.max(1, Number(e.maxStintMinutes) || defaultEvent.maxStintMinutes),
+        minDriveTimeMinutes: Math.max(0, Number(e.minDriveTimeMinutes) || defaultEvent.minDriveTimeMinutes),
+        maxDriveTimeMinutes: Math.max(1, Number(e.maxDriveTimeMinutes) || defaultEvent.maxDriveTimeMinutes),
+      }))
+
+      const selectedEventId = String(parsed.selectedEventId || events[0].id)
+      dispatch({ type: 'IMPORT_CONFIG', payload: { drivers, events, selectedEventId } })
+      window.alert('导入完成：已覆盖车手/赛事配置，并清空本次计时记录。')
+    } catch (e) {
+      window.alert('导入失败：请检查 JSON 格式是否正确。')
+    }
   }
 
   return (
@@ -420,6 +547,9 @@ function App() {
           <>
             <h1>记录</h1>
             <p className="app-subtitle">卡丁车耐力赛时间管理</p>
+            <p className="focus mono" style={{ marginTop: 8 }}>
+              当前赛事：<strong>{selectedEvent?.name ?? '未选择'}</strong>
+            </p>
           </>
         )}
 
@@ -441,36 +571,25 @@ function App() {
               </button>
               {managePanel === 'drivers' && (
                 <div className="accordion-body">
-                  <p className="hint">
-                    共 {state.drivers.length} / {MAX_DRIVERS} 人；至少保留 {MIN_DRIVERS} 人。血型可留空。
-                  </p>
-                  <button type="button" className="btn-secondary full-width" onClick={openAddForm}>
+                  <p className="hint">负责车手信息（名字 / 年龄 / 血型 / 体重）。</p>
+                  <button type="button" className="btn-secondary full-width" onClick={openAddDriver}>
                     添加车手
                   </button>
 
-                  {formMode && (
+                  {formDriverMode && (
                     <div className="driver-form card-inner">
-                      <h3>{formMode === 'add' ? '新建车手' : '编辑车手'}</h3>
+                      <h3>{formDriverMode === 'add' ? '新建车手' : '编辑车手'}</h3>
                       <label>
                         姓名
-                        <input value={formName} onChange={(e) => setFormName(e.target.value)} />
+                        <input value={formDriverName} onChange={(e) => setFormDriverName(e.target.value)} />
                       </label>
                       <label>
                         年龄
-                        <input
-                          type="number"
-                          min={0}
-                          value={formAge}
-                          onChange={(e) => setFormAge(e.target.value)}
-                        />
+                        <input type="number" min={0} value={formDriverAge} onChange={(e) => setFormDriverAge(e.target.value)} />
                       </label>
                       <label>
                         血型（可空）
-                        <input
-                          value={formBlood}
-                          placeholder="如 A / B / O / AB"
-                          onChange={(e) => setFormBlood(e.target.value)}
-                        />
+                        <input value={formDriverBlood} placeholder="如 A / B / O / AB" onChange={(e) => setFormDriverBlood(e.target.value)} />
                       </label>
                       <label>
                         体重 (kg)
@@ -478,12 +597,12 @@ function App() {
                           type="number"
                           min={0}
                           step={0.1}
-                          value={formWeight}
-                          onChange={(e) => setFormWeight(e.target.value)}
+                          value={formDriverWeight}
+                          onChange={(e) => setFormDriverWeight(e.target.value)}
                         />
                       </label>
                       <div className="form-actions">
-                        <button type="button" className="btn-secondary" onClick={closeForm}>
+                        <button type="button" className="btn-secondary" onClick={closeDriverForm}>
                           取消
                         </button>
                         <button type="button" className="btn-primary" onClick={submitDriverForm}>
@@ -502,19 +621,12 @@ function App() {
                             {d.age} 岁 · {d.weight} kg
                             {d.bloodType ? ` · 血型 ${d.bloodType}` : ''}
                           </span>
-                          <span className="driver-stats">
-                            累计 {formatDurationMs(d.totalTime)} · {d.stintCount} 棒
-                          </span>
                         </div>
                         <div className="driver-actions">
-                          <button type="button" className="btn-text" onClick={() => openEditForm(d)}>
+                          <button type="button" className="btn-text" onClick={() => openEditDriver(d)}>
                             编辑
                           </button>
-                          <button
-                            type="button"
-                            className="btn-text danger"
-                            onClick={() => removeDriver(d.id)}
-                          >
+                          <button type="button" className="btn-text danger" onClick={() => removeDriver(d.id)}>
                             删除
                           </button>
                         </div>
@@ -528,93 +640,143 @@ function App() {
             <section className="card manage-accordion">
               <button
                 type="button"
-                className={`accordion-head ${managePanel === 'event' ? 'open' : ''}`}
-                onClick={() => setManagePanel((p) => (p === 'event' ? null : 'event'))}
+                className={`accordion-head ${managePanel === 'events' ? 'open' : ''}`}
+                onClick={() => setManagePanel((p) => (p === 'events' ? null : 'events'))}
               >
                 <span>赛事管理</span>
-                <span className="accordion-cue">{managePanel === 'event' ? '▼' : '▶'}</span>
+                <span className="accordion-cue">{managePanel === 'events' ? '▼' : '▶'}</span>
               </button>
-              {managePanel === 'event' && (
+              {managePanel === 'events' && (
                 <div className="accordion-body">
-                  <div className="grid">
-                    <label>
-                      比赛总时长(分钟)
-                      <input
-                        type="number"
-                        min={1}
-                        value={state.config.raceDurationMinutes}
-                        onChange={(e) =>
-                          dispatch({
-                            type: 'SET_CONFIG_NUMBER',
-                            field: 'raceDurationMinutes',
-                            value: Number(e.target.value),
-                          })
-                        }
-                      />
-                    </label>
-                    <label>
-                      最少棒数
-                      <input
-                        type="number"
-                        min={0}
-                        value={state.config.minStints}
-                        onChange={(e) =>
-                          dispatch({
-                            type: 'SET_CONFIG_NUMBER',
-                            field: 'minStints',
-                            value: Number(e.target.value),
-                          })
-                        }
-                      />
-                    </label>
-                    <label>
-                      单棒最大时间(分钟)
-                      <input
-                        type="number"
-                        min={1}
-                        value={state.config.maxStintMinutes}
-                        onChange={(e) =>
-                          dispatch({
-                            type: 'SET_CONFIG_NUMBER',
-                            field: 'maxStintMinutes',
-                            value: Number(e.target.value),
-                          })
-                        }
-                      />
-                    </label>
-                    <label>
-                      每人最少驾驶时间(分钟)
-                      <input
-                        type="number"
-                        min={0}
-                        value={state.config.minDriveTimeMinutes}
-                        onChange={(e) =>
-                          dispatch({
-                            type: 'SET_CONFIG_NUMBER',
-                            field: 'minDriveTimeMinutes',
-                            value: Number(e.target.value),
-                          })
-                        }
-                      />
-                    </label>
-                    <label>
-                      每人最大驾驶时间(分钟)
-                      <input
-                        type="number"
-                        min={1}
-                        value={state.config.maxDriveTimeMinutes}
-                        onChange={(e) =>
-                          dispatch({
-                            type: 'SET_CONFIG_NUMBER',
-                            field: 'maxDriveTimeMinutes',
-                            value: Number(e.target.value),
-                          })
-                        }
-                      />
-                    </label>
-                  </div>
+                  <p className="hint">设置赛事详情规则（本页只管理规则，计时由「记录」完成）。</p>
+
+                  <button type="button" className="btn-secondary full-width" onClick={openAddEvent}>
+                    添加赛事
+                  </button>
+
+                  {formEventMode && (
+                    <div className="driver-form card-inner">
+                      <h3>{formEventMode === 'add' ? '新建赛事' : '编辑赛事'}</h3>
+                      <label>
+                        赛事名称
+                        <input value={formEventName} onChange={(e) => setFormEventName(e.target.value)} />
+                      </label>
+                      <label>
+                        比赛总时长(分钟)
+                        <input
+                          type="number"
+                          min={1}
+                          value={formRaceDurationMinutes}
+                          onChange={(e) => setFormRaceDurationMinutes(e.target.value)}
+                        />
+                      </label>
+                      <label>
+                        最少棒数
+                        <input type="number" min={0} value={formMinStints} onChange={(e) => setFormMinStints(e.target.value)} />
+                      </label>
+                      <label>
+                        单棒最大时间(分钟)
+                        <input
+                          type="number"
+                          min={1}
+                          value={formMaxStintMinutes}
+                          onChange={(e) => setFormMaxStintMinutes(e.target.value)}
+                        />
+                      </label>
+                      <label>
+                        每人最少驾驶时间(分钟)
+                        <input
+                          type="number"
+                          min={0}
+                          value={formMinDriveTimeMinutes}
+                          onChange={(e) => setFormMinDriveTimeMinutes(e.target.value)}
+                        />
+                      </label>
+                      <label>
+                        每人最大驾驶时间(分钟)
+                        <input
+                          type="number"
+                          min={1}
+                          value={formMaxDriveTimeMinutes}
+                          onChange={(e) => setFormMaxDriveTimeMinutes(e.target.value)}
+                        />
+                      </label>
+                      <div className="form-actions">
+                        <button type="button" className="btn-secondary" onClick={closeEventForm}>
+                          取消
+                        </button>
+                        <button type="button" className="btn-primary" onClick={submitEventForm}>
+                          保存
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  <ul className="driver-list">
+                    {state.events.map((e) => (
+                      <li key={e.id} className="driver-row">
+                        <div className="driver-info">
+                          <strong>{e.name}</strong>
+                          <span className="driver-meta">
+                            总时长 {e.raceDurationMinutes} 分钟 · 最少棒数 {e.minStints}
+                          </span>
+                          <span className="driver-meta">
+                            单棒上限 {e.maxStintMinutes} 分钟 · 人员范围 {e.minDriveTimeMinutes}-{e.maxDriveTimeMinutes} 分钟
+                          </span>
+                        </div>
+                        <div className="driver-actions">
+                          <button type="button" className="btn-text" onClick={() => dispatch({ type: 'SELECT_EVENT', id: e.id })}>
+                            {state.selectedEventId === e.id ? '当前' : '使用'}
+                          </button>
+                          <button type="button" className="btn-text" onClick={() => openEditEvent(e)}>
+                            编辑
+                          </button>
+                          <button type="button" className="btn-text danger" onClick={() => removeEvent(e.id)}>
+                            删除
+                          </button>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
                 </div>
               )}
+            </section>
+
+            <section className="card" style={{ marginBottom: 0 }}>
+              <h2 style={{ marginBottom: 8 }}>配置导入 / 导出</h2>
+              <p className="hint" style={{ marginTop: 0 }}>
+                仅导入车手与赛事规则；导入会清空当前计时记录，避免数据不一致。
+              </p>
+
+              <div className="actions" style={{ gridTemplateColumns: '1fr 1fr' }}>
+                <button type="button" className="btn-primary" onClick={exportConfig}>
+                  导出配置
+                </button>
+                <button type="button" className="btn-secondary" onClick={() => setImportText(exportText || importText)}>
+                  复制导入
+                </button>
+              </div>
+
+              <div style={{ marginTop: 12 }}>
+                <label>
+                  JSON
+                  <textarea
+                    value={importText}
+                    onChange={(e) => setImportText(e.target.value)}
+                    rows={8}
+                    style={{ width: '100%', border: '1px solid #b9c3cc', borderRadius: 10, padding: '10px 12px', fontSize: 14 }}
+                  />
+                </label>
+              </div>
+
+              <div className="actions" style={{ gridTemplateColumns: '1fr 1fr' }}>
+                <button type="button" className="btn-secondary" onClick={() => setImportText('')}>
+                  清空
+                </button>
+                <button type="button" className="btn-primary" onClick={importConfig}>
+                  导入(覆盖)
+                </button>
+              </div>
             </section>
           </>
         )}
@@ -625,25 +787,15 @@ function App() {
               <h2>驾驶记录</h2>
               <label>
                 当前车手
-                {state.drivers.length === 0 ? (
-                  <p className="hint">暂无车手，请先到「管理」添加车手。</p>
-                ) : (
-                  <select
-                    value={state.currentDriverId}
-                    onChange={(e) => dispatch({ type: 'SELECT_DRIVER', driverId: e.target.value })}
-                  >
-                    {state.drivers.map((driver) => (
-                      <option key={driver.id} value={driver.id}>
-                        {driver.name}
-                      </option>
-                    ))}
-                  </select>
-                )}
+                <select value={selectedDriver?.id ?? ''} onChange={(e) => dispatch({ type: 'SELECT_DRIVER', driverId: e.target.value })}>
+                  {state.drivers.map((driver) => (
+                    <option key={driver.id} value={driver.id}>
+                      {driver.name}
+                    </option>
+                  ))}
+                </select>
               </label>
 
-              <p className="focus">
-                当前车手: <strong>{selectedDriver?.name ?? '未选择'}</strong>
-              </p>
               <p className="focus mono">
                 本棒计时: <strong>{formatDurationMs(activeStintMs)}</strong>
               </p>
@@ -670,22 +822,19 @@ function App() {
               <h2>统计</h2>
               <div className="stats">
                 {state.drivers.map((driver) => {
-                  const totalMin = totalMsToMinutes(driver.totalTime)
-                  const isLow = totalMin < state.config.minDriveTimeMinutes
-                  const isHigh = totalMin > state.config.maxDriveTimeMinutes
+                  const stat = driverStats.get(driver.id) ?? { totalTime: 0, stintCount: 0 }
+                  const totalMin = totalMsToMinutes(stat.totalTime)
+                  const isLow = totalMin < selectedEvent.minDriveTimeMinutes
+                  const isHigh = totalMin > selectedEvent.maxDriveTimeMinutes
                   let hint = '正常'
-
-                  if (isLow) {
-                    hint = '低于最少驾驶时间'
-                  } else if (isHigh) {
-                    hint = '超过最大驾驶时间'
-                  }
+                  if (isLow) hint = '低于最少驾驶时间'
+                  else if (isHigh) hint = '超过最大驾驶时间'
 
                   return (
                     <article key={driver.id} className="stat-item">
                       <p>{driver.name}</p>
-                      <p className="mono">总驾驶时间: {formatDurationMs(driver.totalTime)}</p>
-                      <p>已跑棒数: {driver.stintCount}</p>
+                      <p className="mono">总驾驶时间: {formatDurationMs(stat.totalTime)}</p>
+                      <p>已跑棒数: {stat.stintCount}</p>
                       <p className={isLow || isHigh ? 'warn' : 'ok'}>{hint}</p>
                     </article>
                   )
@@ -697,18 +846,10 @@ function App() {
       </main>
 
       <nav className="bottom-nav" aria-label="主导航">
-        <button
-          type="button"
-          className={tab === 'record' ? 'nav-item active' : 'nav-item'}
-          onClick={() => setTab('record')}
-        >
+        <button type="button" className={tab === 'record' ? 'nav-item active' : 'nav-item'} onClick={() => setTab('record')}>
           记录
         </button>
-        <button
-          type="button"
-          className={tab === 'manage' ? 'nav-item active' : 'nav-item'}
-          onClick={() => setTab('manage')}
-        >
+        <button type="button" className={tab === 'manage' ? 'nav-item active' : 'nav-item'} onClick={() => setTab('manage')}>
           管理
         </button>
       </nav>
@@ -716,4 +857,3 @@ function App() {
   )
 }
 
-export default App
