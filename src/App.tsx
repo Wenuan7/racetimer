@@ -702,6 +702,24 @@ export default function App() {
   const canEnd = state.activeStintStartTime !== null && !pitIsActive
   const canPit = state.activeStintStartTime !== null && !pitIsActive && state.replacementDriverId !== state.currentDriverId
 
+  const confirmTwice = (first: string, second: string) => {
+    return window.confirm(first) && window.confirm(second)
+  }
+
+  const onEndStint = () => {
+    if (!canEnd) return
+    const ok = confirmTwice('确认结束驾驶？', '二次确认：结束驾驶将记录本棒时长，继续吗？')
+    if (!ok) return
+    dispatch({ type: 'END_STINT', now: Date.now() })
+  }
+
+  const onCancelPit = () => {
+    if (!pitIsActive) return
+    const ok = confirmTwice('确认取消进站？', '二次确认：取消后将不会换车，但计时状态会保留。继续吗？')
+    if (!ok) return
+    dispatch({ type: 'CANCEL_PIT', now: Date.now() })
+  }
+
   return (
     <div className="app-shell">
       <main className="app">
@@ -938,7 +956,8 @@ export default function App() {
                   <div>总时长：{selectedEvent.raceDurationMinutes} 分钟</div>
                   <div>最少棒数：{selectedEvent.minStints} </div>
                   <div>单棒最大：{selectedEvent.maxStintMinutes} 分钟</div>
-                  <div>每人最少-最多驾驶：{selectedEvent.minDriveTimeMinutes}-{selectedEvent.maxDriveTimeMinutes} 分钟</div>
+                  <div>每人最少驾驶：{selectedEvent.minDriveTimeMinutes} 分钟</div>
+                  <div>每人最多驾驶：{selectedEvent.maxDriveTimeMinutes} 分钟</div>
                   <div>进站最小时间：{selectedEvent.minPitTimeMinutes} 分钟</div>
                 </div>
               </div>
@@ -994,7 +1013,7 @@ export default function App() {
                     <button
                       type="button"
                       className="stop"
-                      onClick={() => dispatch({ type: 'CANCEL_PIT', now: Date.now() })}
+                      onClick={onCancelPit}
                     >
                       取消进站
                     </button>
@@ -1022,7 +1041,7 @@ export default function App() {
                       type="button"
                       className="stop"
                       disabled={!canEnd}
-                      onClick={() => dispatch({ type: 'END_STINT', now: Date.now() })}
+                      onClick={onEndStint}
                     >
                       结束驾驶
                     </button>
