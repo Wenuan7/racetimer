@@ -14,12 +14,27 @@ body {
   margin: 0 auto;
 }
 
+.app-shell {
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+}
+
 .app {
+  flex: 1;
   padding: 12px;
+  padding-bottom: calc(12px + 56px + env(safe-area-inset-bottom, 0px));
+}
+
+.app-subtitle {
+  margin: -4px 0 12px;
+  font-size: 13px;
+  text-align: center;
+  color: #52606d;
 }
 
 h1 {
-  margin: 8px 0 12px;
+  margin: 8px 0 4px;
   font-size: 24px;
   text-align: center;
 }
@@ -122,6 +137,36 @@ button:disabled {
 .warn {
   color: #d93025;
   font-weight: 700;
+}
+
+.bottom-nav {
+  position: fixed;
+  bottom: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 100%;
+  max-width: 720px;
+  display: flex;
+  z-index: 20;
+  border-top: 1px solid #d7dde3;
+  background: #fff;
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+  box-shadow: 0 -4px 16px rgba(15, 23, 42, 0.06);
+}
+
+.bottom-nav .nav-item {
+  flex: 1;
+  padding: 14px 12px;
+  font-size: 16px;
+  font-weight: 700;
+  color: #52606d;
+  background: #fff;
+  border-radius: 0;
+}
+
+.bottom-nav .nav-item.active {
+  color: #0f172a;
+  background: #eef2f6;
 }
 
 @media (min-width: 768px) {

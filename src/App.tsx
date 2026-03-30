@@ -201,6 +201,8 @@ function formatSecondsToMinutes(seconds: number): string {
   return (seconds / 60).toFixed(1)
 }
 
+type TabId = 'record' | 'manage'
+
 function App() {
   const [state, dispatch] = useReducer(reducer, defaultState, () => {
     try {
@@ -210,6 +212,7 @@ function App() {
       return defaultState
     }
   })
+  const [tab, setTab] = useState<TabId>('record')
   const [now, setNow] = useState(Date.now())
 
   useEffect(() => {
@@ -233,124 +236,130 @@ function App() {
   const selectedDriver = state.drivers.find((driver) => driver.id === state.currentDriverId)
 
   return (
-    <main className="app">
-      <h1>卡丁车耐力赛时间管理</h1>
+    <div className="app-shell">
+      <main className="app">
+        <h1>{tab === 'record' ? '记录' : '管理'}</h1>
+        <p className="app-subtitle">卡丁车耐力赛时间管理</p>
 
-      <section className="card">
-        <h2>比赛配置</h2>
-        <div className="grid">
-          <label>
-            比赛总时长(分钟)
-            <input
-              type="number"
-              min={1}
-              value={state.config.raceDurationMinutes}
-              onChange={(event) =>
-                dispatch({
-                  type: 'SET_CONFIG_NUMBER',
-                  field: 'raceDurationMinutes',
-                  value: Number(event.target.value),
-                })
-              }
-            />
-          </label>
-          <label>
-            车手数量(2-10)
-            <input
-              type="number"
-              min={2}
-              max={10}
-              value={state.config.driverCount}
-              onChange={(event) =>
-                dispatch({
-                  type: 'SET_DRIVER_COUNT',
-                  count: Number(event.target.value),
-                })
-              }
-            />
-          </label>
-          <label>
-            最少棒数
-            <input
-              type="number"
-              min={0}
-              value={state.config.minStints}
-              onChange={(event) =>
-                dispatch({
-                  type: 'SET_CONFIG_NUMBER',
-                  field: 'minStints',
-                  value: Number(event.target.value),
-                })
-              }
-            />
-          </label>
-          <label>
-            单棒最大时间(分钟)
-            <input
-              type="number"
-              min={1}
-              value={state.config.maxStintMinutes}
-              onChange={(event) =>
-                dispatch({
-                  type: 'SET_CONFIG_NUMBER',
-                  field: 'maxStintMinutes',
-                  value: Number(event.target.value),
-                })
-              }
-            />
-          </label>
-          <label>
-            每人最少驾驶时间(分钟)
-            <input
-              type="number"
-              min={0}
-              value={state.config.minDriveTimeMinutes}
-              onChange={(event) =>
-                dispatch({
-                  type: 'SET_CONFIG_NUMBER',
-                  field: 'minDriveTimeMinutes',
-                  value: Number(event.target.value),
-                })
-              }
-            />
-          </label>
-          <label>
-            每人最大驾驶时间(分钟)
-            <input
-              type="number"
-              min={1}
-              value={state.config.maxDriveTimeMinutes}
-              onChange={(event) =>
-                dispatch({
-                  type: 'SET_CONFIG_NUMBER',
-                  field: 'maxDriveTimeMinutes',
-                  value: Number(event.target.value),
-                })
-              }
-            />
-          </label>
-        </div>
+        {tab === 'manage' && (
+          <section className="card">
+            <h2>比赛配置</h2>
+            <div className="grid">
+              <label>
+                比赛总时长(分钟)
+                <input
+                  type="number"
+                  min={1}
+                  value={state.config.raceDurationMinutes}
+                  onChange={(event) =>
+                    dispatch({
+                      type: 'SET_CONFIG_NUMBER',
+                      field: 'raceDurationMinutes',
+                      value: Number(event.target.value),
+                    })
+                  }
+                />
+              </label>
+              <label>
+                车手数量(2-10)
+                <input
+                  type="number"
+                  min={2}
+                  max={10}
+                  value={state.config.driverCount}
+                  onChange={(event) =>
+                    dispatch({
+                      type: 'SET_DRIVER_COUNT',
+                      count: Number(event.target.value),
+                    })
+                  }
+                />
+              </label>
+              <label>
+                最少棒数
+                <input
+                  type="number"
+                  min={0}
+                  value={state.config.minStints}
+                  onChange={(event) =>
+                    dispatch({
+                      type: 'SET_CONFIG_NUMBER',
+                      field: 'minStints',
+                      value: Number(event.target.value),
+                    })
+                  }
+                />
+              </label>
+              <label>
+                单棒最大时间(分钟)
+                <input
+                  type="number"
+                  min={1}
+                  value={state.config.maxStintMinutes}
+                  onChange={(event) =>
+                    dispatch({
+                      type: 'SET_CONFIG_NUMBER',
+                      field: 'maxStintMinutes',
+                      value: Number(event.target.value),
+                    })
+                  }
+                />
+              </label>
+              <label>
+                每人最少驾驶时间(分钟)
+                <input
+                  type="number"
+                  min={0}
+                  value={state.config.minDriveTimeMinutes}
+                  onChange={(event) =>
+                    dispatch({
+                      type: 'SET_CONFIG_NUMBER',
+                      field: 'minDriveTimeMinutes',
+                      value: Number(event.target.value),
+                    })
+                  }
+                />
+              </label>
+              <label>
+                每人最大驾驶时间(分钟)
+                <input
+                  type="number"
+                  min={1}
+                  value={state.config.maxDriveTimeMinutes}
+                  onChange={(event) =>
+                    dispatch({
+                      type: 'SET_CONFIG_NUMBER',
+                      field: 'maxDriveTimeMinutes',
+                      value: Number(event.target.value),
+                    })
+                  }
+                />
+              </label>
+            </div>
 
-        <div className="names">
-          {state.drivers.map((driver, index) => (
-            <label key={driver.id}>
-              车手{index + 1}姓名
-              <input
-                type="text"
-                value={driver.name}
-                onChange={(event) =>
-                  dispatch({
-                    type: 'SET_DRIVER_NAME',
-                    index,
-                    name: event.target.value.trim(),
-                  })
-                }
-              />
-            </label>
-          ))}
-        </div>
-      </section>
+            <div className="names">
+              {state.drivers.map((driver, index) => (
+                <label key={driver.id}>
+                  车手{index + 1}姓名
+                  <input
+                    type="text"
+                    value={driver.name}
+                    onChange={(event) =>
+                      dispatch({
+                        type: 'SET_DRIVER_NAME',
+                        index,
+                        name: event.target.value.trim(),
+                      })
+                    }
+                  />
+                </label>
+              ))}
+            </div>
+          </section>
+        )}
 
+        {tab === 'record' && (
+          <>
       <section className="card">
         <h2>驾驶记录</h2>
         <label>
@@ -418,7 +427,27 @@ function App() {
           })}
         </div>
       </section>
-    </main>
+          </>
+        )}
+      </main>
+
+      <nav className="bottom-nav" aria-label="主导航">
+        <button
+          type="button"
+          className={tab === 'record' ? 'nav-item active' : 'nav-item'}
+          onClick={() => setTab('record')}
+        >
+          记录
+        </button>
+        <button
+          type="button"
+          className={tab === 'manage' ? 'nav-item active' : 'nav-item'}
+          onClick={() => setTab('manage')}
+        >
+          管理
+        </button>
+      </nav>
+    </div>
   )
 }
 
