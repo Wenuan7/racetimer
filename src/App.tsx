@@ -7,6 +7,7 @@ type Driver = {
   age: number
   bloodType: string // 可为空
   weight: number
+  onRace: boolean
 }
 
 // 驾驶棒次记录：duration 使用毫秒（Date.now() 差值）
@@ -21,6 +22,7 @@ type Stint = {
 type EventRule = {
   id: string
   name: string
+  teamSize: number
   raceDurationMinutes: number
   minStints: number
   maxStintMinutes: number
@@ -56,7 +58,7 @@ type AppState = {
 
 type Action =
   | { type: 'ADD_DRIVER'; driver: Driver }
-  | { type: 'UPDATE_DRIVER'; id: string; patch: Partial<Pick<Driver, 'name' | 'age' | 'bloodType' | 'weight'>> }
+  | { type: 'UPDATE_DRIVER'; id: string; patch: Partial<Pick<Driver, 'name' | 'age' | 'bloodType' | 'weight' | 'onRace'>> }
   | { type: 'REMOVE_DRIVER'; id: string }
   | { type: 'SELECT_CURRENT_DRIVER'; id: string }
   | { type: 'SELECT_REPLACEMENT_DRIVER'; id: string }
@@ -73,6 +75,7 @@ type Action =
 
   | { type: 'START_STINT'; now: number }
   | { type: 'END_STINT'; now: number }
+  | { type: 'RESET_RACE_RECORD' }
   | { type: 'START_PIT'; now: number }
   | { type: 'FINISH_PIT'; pitEndTime: number }
   | { type: 'CANCEL_PIT'; now: number }
@@ -86,12 +89,13 @@ const MAX_EVENTS = 10
 const MIN_EVENTS = 1
 
 const defaultEvent: Omit<EventRule, 'id'> = {
-  name: '默认赛事',
+  name: 'CRKC',
+  teamSize: 4,
   raceDurationMinutes: 180,
-  minStints: 6,
-  maxStintMinutes: 30,
+  minStints: 4,
+  maxStintMinutes: 70,
   minDriveTimeMinutes: 45,
-  maxDriveTimeMinutes: 75,
+  maxDriveTimeMinutes: 180,
   minPitTimeMinutes: 2,
 }
 
@@ -106,9 +110,11 @@ function createId(prefix: string) {
 
 function createDefaultDrivers(): Driver[] {
   return [
-    { id: 'driver-1', name: '车手1', age: 18, bloodType: '', weight: 65 },
-    { id: 'driver-2', name: '车手2', age: 20, bloodType: '', weight: 60 },
-    { id: 'driver-3', name: '车手3', age: 22, bloodType: 'A', weight: 58 },
+    { id: 'driver-1', name: 'TFG-Sino', age: 23, bloodType: 'AB+', weight: 60, onRace: true },
+    { id: 'driver-2', name: 'TFG-毛哥', age: 34, bloodType: '', weight: 60, onRace: true },
+    { id: 'driver-3', name: 'TFG-Gary', age: 24, bloodType: 'A+', weight: 80, onRace: true },
+    { id: 'driver-4', name: 'TFG-調', age: 17, bloodType: 'O-', weight: 70, onRace: true },
+    { id: 'driver-5', name: 'TFG-King', age: 15, bloodType: 'AB+', weight: 75, onRace: true },
   ]
 }
 
@@ -144,6 +150,7 @@ function normalizeState(raw: unknown): AppState {
             age: Math.max(0, Math.floor(Number(item.age) || 0)),
             bloodType: typeof item.bloodType === 'string' ? item.bloodType : '',
             weight: Math.max(0, Number(item.weight) || 0),
+            onRace: item.onRace === undefined ? true : Boolean(item.onRace),
           }
         })
       : createDefaultDrivers()
@@ -162,6 +169,7 @@ function normalizeState(raw: unknown): AppState {
       return {
         id: String(item.id || `event-${index + 1}`),
         name: String(item.name || `赛事${index + 1}`),
+        teamSize: Math.max(1, Math.floor(Number(item.teamSize) || defaultEvent.teamSize)),
         raceDurationMinutes: Math.max(1, Math.floor(Number(item.raceDurationMinutes) || defaultEvent.raceDurationMinutes)),
         minStints: Math.max(0, Math.floor(Number(item.minStints) || defaultEvent.minStints)),
         maxStintMinutes: Math.max(1, Number(item.maxStintMinutes) || defaultEvent.maxStintMinutes),
@@ -177,6 +185,7 @@ function normalizeState(raw: unknown): AppState {
       {
         id: 'event-1',
         ...defaultEvent,
+        teamSize: finiteNum(cfg.teamSize, defaultEvent.teamSize),
         raceDurationMinutes: finiteNum(cfg.raceDurationMinutes, defaultEvent.raceDurationMinutes),
         minStints: finiteNum(cfg.minStints, defaultEvent.minStints),
         maxStintMinutes: finiteNum(cfg.maxStintMinutes, defaultEvent.maxStintMinutes),
@@ -382,6 +391,19 @@ function reducer(state: AppState, action: Action): AppState {
       }
     }
 
+    case 'RESET_RACE_RECORD': {
+      return {
+        ...state,
+        stints: [],
+        activeStintStartTime: null,
+        pitEndTime: null,
+        pitPrevDriverId: null,
+        pitNextDriverId: null,
+        pitCancelled: false,
+        stintPausedMs: null,
+      }
+    }
+
     case 'START_PIT': {
       if (state.activeStintStartTime === null) return state
       if (state.pitEndTime !== null && !state.pitCancelled) return state
@@ -509,6 +531,7 @@ export default function App() {
     () => state.drivers.find((d) => d.id === state.replacementDriverId) ?? null,
     [state.drivers, state.replacementDriverId],
   )
+  const raceDrivers = useMemo(() => state.drivers.filter((d) => d.onRace), [state.drivers])
 
   // 统计：由 stints 聚合
   const driverStats = useMemo(() => {
@@ -522,6 +545,17 @@ export default function App() {
     return totals
   }, [state.stints])
 
+  useEffect(() => {
+    if (raceDrivers.length === 0) return
+    if (!raceDrivers.some((d) => d.id === state.currentDriverId)) {
+      dispatch({ type: 'SELECT_CURRENT_DRIVER', id: raceDrivers[0].id })
+    }
+    if (!raceDrivers.some((d) => d.id === state.replacementDriverId)) {
+      const next = raceDrivers.find((d) => d.id !== raceDrivers[0].id) ?? raceDrivers[0]
+      dispatch({ type: 'SELECT_REPLACEMENT_DRIVER', id: next.id })
+    }
+  }, [raceDrivers, state.currentDriverId, state.replacementDriverId])
+
   // ————— 管理页表单状态 —————
   const [formDriverMode, setFormDriverMode] = useState<'add' | 'edit' | null>(null)
   const [formDriverId, setFormDriverId] = useState<string | null>(null)
@@ -529,10 +563,12 @@ export default function App() {
   const [formDriverAge, setFormDriverAge] = useState('')
   const [formDriverBlood, setFormDriverBlood] = useState('')
   const [formDriverWeight, setFormDriverWeight] = useState('')
+  const [formDriverOnRace, setFormDriverOnRace] = useState(true)
 
   const [formEventMode, setFormEventMode] = useState<'add' | 'edit' | null>(null)
   const [formEventId, setFormEventId] = useState<string | null>(null)
   const [formEventName, setFormEventName] = useState('')
+  const [formTeamSize, setFormTeamSize] = useState('')
   const [formRaceDurationMinutes, setFormRaceDurationMinutes] = useState('')
   const [formMinStints, setFormMinStints] = useState('')
   const [formMaxStintMinutes, setFormMaxStintMinutes] = useState('')
@@ -550,6 +586,7 @@ export default function App() {
     setFormDriverAge('')
     setFormDriverBlood('')
     setFormDriverWeight('')
+    setFormDriverOnRace(true)
   }
   const openEditDriver = (d: Driver) => {
     setFormDriverMode('edit')
@@ -558,17 +595,19 @@ export default function App() {
     setFormDriverAge(String(d.age))
     setFormDriverBlood(d.bloodType)
     setFormDriverWeight(String(d.weight))
+    setFormDriverOnRace(d.onRace)
   }
   const submitDriverForm = () => {
     const name = formDriverName.trim() || '未命名车手'
     const age = Math.max(0, Math.floor(Number(formDriverAge) || 0))
     const bloodType = formDriverBlood.trim()
     const weight = Math.max(0, Number(formDriverWeight) || 0)
+    const onRace = formDriverOnRace
     if (formDriverMode === 'add') {
       if (state.drivers.length >= MAX_DRIVERS) return
-      dispatch({ type: 'ADD_DRIVER', driver: { id: createId('driver'), name, age, bloodType, weight } })
+      dispatch({ type: 'ADD_DRIVER', driver: { id: createId('driver'), name, age, bloodType, weight, onRace } })
     } else if (formDriverMode === 'edit' && formDriverId) {
-      dispatch({ type: 'UPDATE_DRIVER', id: formDriverId, patch: { name, age, bloodType, weight } })
+      dispatch({ type: 'UPDATE_DRIVER', id: formDriverId, patch: { name, age, bloodType, weight, onRace } })
     }
     setFormDriverMode(null)
     setFormDriverId(null)
@@ -582,6 +621,7 @@ export default function App() {
     setFormEventMode('add')
     setFormEventId(null)
     setFormEventName('')
+    setFormTeamSize('')
     setFormRaceDurationMinutes('')
     setFormMinStints('')
     setFormMaxStintMinutes('')
@@ -593,6 +633,7 @@ export default function App() {
     setFormEventMode('edit')
     setFormEventId(e.id)
     setFormEventName(e.name)
+    setFormTeamSize(String(e.teamSize))
     setFormRaceDurationMinutes(String(e.raceDurationMinutes))
     setFormMinStints(String(e.minStints))
     setFormMaxStintMinutes(String(e.maxStintMinutes))
@@ -602,6 +643,7 @@ export default function App() {
   }
   const submitEventForm = () => {
     const name = formEventName.trim() || '未命名赛事'
+    const teamSize = Math.max(1, Math.floor(Number(formTeamSize) || defaultEvent.teamSize))
     const raceDurationMinutes = Math.max(1, Math.floor(Number(formRaceDurationMinutes) || defaultEvent.raceDurationMinutes))
     const minStints = Math.max(0, Math.floor(Number(formMinStints) || defaultEvent.minStints))
     const maxStintMinutes = Math.max(1, Number(formMaxStintMinutes) || defaultEvent.maxStintMinutes)
@@ -616,6 +658,7 @@ export default function App() {
         event: {
           id: createId('event'),
           name,
+          teamSize,
           raceDurationMinutes,
           minStints,
           maxStintMinutes,
@@ -630,6 +673,7 @@ export default function App() {
         id: formEventId,
         patch: {
           name,
+          teamSize,
           raceDurationMinutes,
           minStints,
           maxStintMinutes,
@@ -674,6 +718,7 @@ export default function App() {
       age: Math.max(0, Math.floor(Number(d.age) || 0)),
       bloodType: typeof d.bloodType === 'string' ? d.bloodType : '',
       weight: Math.max(0, Number(d.weight) || 0),
+      onRace: d.onRace === undefined ? true : Boolean(d.onRace),
     }))
 
     const events: EventRule[] = eventsArr.map((e: any, index: number) => {
@@ -681,6 +726,7 @@ export default function App() {
       return {
         id: String(e.id || `event-${index + 1}`),
         name: String(e.name || `赛事${index + 1}`),
+        teamSize: Math.max(1, Math.floor(Number(e.teamSize) || defaultEvent.teamSize)),
         raceDurationMinutes: Math.max(1, Math.floor(Number(e.raceDurationMinutes) || defaultEvent.raceDurationMinutes)),
         minStints: Math.max(0, Math.floor(Number(e.minStints) || defaultEvent.minStints)),
         maxStintMinutes: Math.max(1, Number(e.maxStintMinutes) || defaultEvent.maxStintMinutes),
@@ -698,9 +744,13 @@ export default function App() {
   const pitIsActive = state.pitEndTime !== null && !state.pitCancelled
   const pitRemainingMs = pitIsActive ? Math.max(0, (state.pitEndTime as number) - now) : 0
 
-  const canStart = state.activeStintStartTime === null && !pitIsActive && state.drivers.length > 0
+  const canStart = state.activeStintStartTime === null && !pitIsActive && raceDrivers.length > 0
   const canEnd = state.activeStintStartTime !== null && !pitIsActive
-  const canPit = state.activeStintStartTime !== null && !pitIsActive && state.replacementDriverId !== state.currentDriverId
+  const canPit =
+    state.activeStintStartTime !== null &&
+    !pitIsActive &&
+    state.replacementDriverId !== state.currentDriverId &&
+    raceDrivers.some((d) => d.id === state.replacementDriverId)
 
   const confirmTwice = (first: string, second: string) => {
     return window.confirm(first) && window.confirm(second)
@@ -708,14 +758,14 @@ export default function App() {
 
   const onEndStint = () => {
     if (!canEnd) return
-    const ok = confirmTwice('确认结束驾驶？', '二次确认：结束驾驶将记录本棒时长，继续吗？')
+    const ok = confirmTwice('确认结束驾驶？', '二次确认：确认后将重置该场比赛记录，继续吗？')
     if (!ok) return
-    dispatch({ type: 'END_STINT', now: Date.now() })
+    dispatch({ type: 'RESET_RACE_RECORD' })
   }
 
   const onCancelPit = () => {
     if (!pitIsActive) return
-    const ok = confirmTwice('确认取消进站？', '二次确认：取消后将不会换车，但计时状态会保留。继续吗？')
+    const ok = window.confirm('确认取消进站？')
     if (!ok) return
     dispatch({ type: 'CANCEL_PIT', now: Date.now() })
   }
@@ -725,8 +775,7 @@ export default function App() {
       <main className="app">
         {tab === 'record' && (
           <>
-            <h1>记录</h1>
-            <p className="app-subtitle">卡丁车耐力赛时间管理</p>
+            <h1>TFG RaceTimer</h1>
             <p className="focus mono" style={{ marginTop: 8 }}>
               当前赛事：<strong>{selectedEvent.name}</strong>
             </p>
@@ -775,6 +824,15 @@ export default function App() {
                         体重 (kg)
                         <input type="number" min={0} step={0.1} value={formDriverWeight} onChange={(e) => setFormDriverWeight(e.target.value)} />
                       </label>
+                      <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontWeight: 600 }}>
+                        <input
+                          type="checkbox"
+                          checked={formDriverOnRace}
+                          onChange={(e) => setFormDriverOnRace(e.target.checked)}
+                          style={{ width: 18, height: 18 }}
+                        />
+                        本场上场
+                      </label>
                       <div className="form-actions">
                         <button type="button" className="btn-secondary" onClick={() => setFormDriverMode(null)}>
                           取消
@@ -795,8 +853,16 @@ export default function App() {
                             {d.age} 岁 · {d.weight} kg
                             {d.bloodType ? ` · 血型 ${d.bloodType}` : ''}
                           </span>
+                          <span className="driver-meta">{d.onRace ? '已勾选上场' : '未勾选上场'}</span>
                         </div>
                         <div className="driver-actions">
+                          <button
+                            type="button"
+                            className="btn-text"
+                            onClick={() => dispatch({ type: 'UPDATE_DRIVER', id: d.id, patch: { onRace: !d.onRace } })}
+                          >
+                            {d.onRace ? '取消上场' : '设为上场'}
+                          </button>
                           <button type="button" className="btn-text" onClick={() => openEditDriver(d)}>
                             编辑
                           </button>
@@ -833,6 +899,10 @@ export default function App() {
                       <label>
                         赛事名称
                         <input value={formEventName} onChange={(e) => setFormEventName(e.target.value)} />
+                      </label>
+                      <label>
+                        上场人数
+                        <input type="number" min={1} value={formTeamSize} onChange={(e) => setFormTeamSize(e.target.value)} />
                       </label>
                       <label>
                         比赛总时长(分钟)
@@ -875,7 +945,7 @@ export default function App() {
                         <div className="driver-info">
                           <strong>{e.name}</strong>
                           <span className="driver-meta">
-                            {e.raceDurationMinutes} 分钟 · 最少棒数 {e.minStints}
+                            {e.teamSize} 人 · {e.raceDurationMinutes} 分钟 · 最少棒数 {e.minStints}
                             <br />
                             单棒上限 {e.maxStintMinutes} 分钟 · 人员阈值 {e.minDriveTimeMinutes}-{e.maxDriveTimeMinutes} 分钟
                             <br />
@@ -953,6 +1023,7 @@ export default function App() {
                   赛事配置：{selectedEvent.name}
                 </p>
                 <div className="event-config-grid">
+                  <div>上场人数：{selectedEvent.teamSize} 人</div>
                   <div>总时长：{selectedEvent.raceDurationMinutes} 分钟</div>
                   <div>最少棒数：{selectedEvent.minStints} </div>
                   <div>单棒最大：{selectedEvent.maxStintMinutes} 分钟</div>
@@ -966,24 +1037,26 @@ export default function App() {
                 <div className="pit-slot">
                   <div className="pit-slot-title">1号位（当前驾驶车手）</div>
                   <div className="pit-slot-value">
-                    {currentDriver ? currentDriver.name : '未选择'}
+                    {currentDriver?.onRace ? currentDriver.name : '未选择上场车手'}
                     {pitIsActive && <span className="pit-state"> · 进站中</span>}
                   </div>
                 </div>
 
                 <div className="pit-slot">
                   <div className="pit-slot-title">2号位（替换车手）</div>
-                  {!pitIsActive ? (
+                  {!pitIsActive && raceDrivers.length > 0 ? (
                     <select
                       value={state.replacementDriverId}
                       onChange={(e) => dispatch({ type: 'SELECT_REPLACEMENT_DRIVER', id: e.target.value })}
                     >
-                      {state.drivers.map((d) => (
+                      {raceDrivers.map((d) => (
                         <option key={d.id} value={d.id}>
                           {d.name}
                         </option>
                       ))}
                     </select>
+                  ) : !pitIsActive ? (
+                    <div className="pit-slot-value">暂无上场车手</div>
                   ) : (
                     <div className="pit-slot-value">{replacementDriver ? replacementDriver.name : '未选择'}</div>
                   )}
@@ -1056,7 +1129,7 @@ export default function App() {
             <section className="card">
               <h2>统计</h2>
               <div className="stats">
-                {state.drivers.map((d) => {
+                {raceDrivers.map((d) => {
                   const stat = driverStats.get(d.id) ?? { totalTime: 0, stintCount: 0 }
                   const totalMin = totalMsToMinutes(stat.totalTime)
                   const isLow = totalMin < selectedEvent.minDriveTimeMinutes
@@ -1072,6 +1145,7 @@ export default function App() {
                     </article>
                   )
                 })}
+                {raceDrivers.length === 0 && <p className="hint">未勾选上场车手，暂无统计。</p>}
               </div>
 
               <h3 style={{ margin: '14px 0 10px', fontSize: 16 }}>每一棒明细</h3>
