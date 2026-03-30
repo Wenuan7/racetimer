@@ -376,6 +376,44 @@ button:disabled {
   background: #eef2f6;
 }
 
+.pit-slots {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 10px;
+}
+
+.pit-slot {
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  padding: 10px;
+  background: #fff;
+}
+
+.pit-slot-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: #0f172a;
+  margin-bottom: 8px;
+}
+
+.pit-slot-value {
+  font-size: 18px;
+  font-weight: 800;
+  color: #0f172a;
+}
+
+.pit-state {
+  font-size: 13px;
+  font-weight: 800;
+  color: #d93025;
+}
+
+@media (min-width: 768px) {
+  .pit-slots {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
 @media (min-width: 768px) {
   .grid {
     grid-template-columns: 1fr 1fr;
