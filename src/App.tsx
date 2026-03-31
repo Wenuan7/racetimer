@@ -1053,7 +1053,7 @@ export default function App() {
     const mark = getVehicleMark(carNo)
     const teamName = getVehicleTeamName(carNo)
     const isPool = zoneLabel === '车辆池'
-    const canInPit = isPool && (teamName.trim().length > 0 || getVehiclePitCount(carNo) > 0)
+    const canInPit = isPool
     const canOutPit = !isPool && pitWaitQueue.length > 0
     return (
       <article key={key} className="vehicle-mini">
@@ -1358,22 +1358,6 @@ export default function App() {
 
             <section className="card">
               <h2>车辆</h2>
-              <p className="hint">简洁视图：点击车辆小卡后，在下方绑定详细信息。</p>
-
-              <div className="vehicle-block">
-                <div className="vehicle-block-head">P区模块（维修区车辆数：{selectedEvent.pitVehicleCount}）</div>
-                <div className="vehicle-grid">
-                  {pitCars.length === 0 ? <p className="hint">当前赛事未配置 P 区车辆。</p> : pitCars.map((carNo) => renderVehicleCard(carNo, 'P区'))}
-                </div>
-              </div>
-
-              <div className="vehicle-block">
-                <div className="vehicle-block-head">车辆池（场上车辆数：{selectedEvent.teamCount}）</div>
-                <div className="vehicle-grid">
-                  {poolCars.map((carNo) => renderVehicleCard(carNo, '车辆池'))}
-                </div>
-              </div>
-
               <div className="vehicle-block">
                 <div className="vehicle-block-head">等待区（先进先出）</div>
                 <div className="waiting-list">
@@ -1388,6 +1372,20 @@ export default function App() {
                       </div>
                     ))
                   )}
+                </div>
+              </div>
+
+              <div className="vehicle-block">
+                <div className="vehicle-block-head">P区模块（维修区车辆数：{selectedEvent.pitVehicleCount}）</div>
+                <div className="vehicle-grid">
+                  {pitCars.length === 0 ? <p className="hint">当前赛事未配置 P 区车辆。</p> : pitCars.map((carNo) => renderVehicleCard(carNo, 'P区'))}
+                </div>
+              </div>
+
+              <div className="vehicle-block">
+                <div className="vehicle-block-head">车辆池（场上车辆数：{selectedEvent.teamCount}）</div>
+                <div className="vehicle-grid">
+                  {poolCars.map((carNo) => renderVehicleCard(carNo, '车辆池'))}
                 </div>
               </div>
             </section>
