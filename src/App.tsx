@@ -24,6 +24,8 @@ type EventRule = {
   id: string
   name: string
   teamSize: number
+  teamCount: number
+  pitVehicleCount: number
   raceDurationMinutes: number
   minStints: number
   maxStintMinutes: number
@@ -99,6 +101,8 @@ const MIN_EVENTS = 1
 const defaultEvent: Omit<EventRule, 'id'> = {
   name: 'CRKC',
   teamSize: 4,
+  teamCount: 25,
+  pitVehicleCount: 4,
   raceDurationMinutes: 180,
   minStints: 4,
   maxStintMinutes: 70,
@@ -187,6 +191,8 @@ function normalizeState(raw: unknown): AppState {
         id: String(item.id || `event-${index + 1}`),
         name: String(item.name || `赛事${index + 1}`),
         teamSize: Math.max(1, Math.floor(Number(item.teamSize) || defaultEvent.teamSize)),
+        teamCount: Math.max(1, Math.floor(Number(item.teamCount) || defaultEvent.teamCount)),
+        pitVehicleCount: Math.max(0, Math.floor(Number(item.pitVehicleCount) || defaultEvent.pitVehicleCount)),
         raceDurationMinutes: Math.max(1, Math.floor(Number(item.raceDurationMinutes) || defaultEvent.raceDurationMinutes)),
         minStints: Math.max(0, Math.floor(Number(item.minStints) || defaultEvent.minStints)),
         maxStintMinutes: Math.max(1, Number(item.maxStintMinutes) || defaultEvent.maxStintMinutes),
@@ -203,6 +209,8 @@ function normalizeState(raw: unknown): AppState {
         id: 'event-1',
         ...defaultEvent,
         teamSize: finiteNum(cfg.teamSize, defaultEvent.teamSize),
+        teamCount: finiteNum(cfg.teamCount, defaultEvent.teamCount),
+        pitVehicleCount: finiteNum(cfg.pitVehicleCount, defaultEvent.pitVehicleCount),
         raceDurationMinutes: finiteNum(cfg.raceDurationMinutes, defaultEvent.raceDurationMinutes),
         minStints: finiteNum(cfg.minStints, defaultEvent.minStints),
         maxStintMinutes: finiteNum(cfg.maxStintMinutes, defaultEvent.maxStintMinutes),
@@ -634,8 +642,10 @@ export default function App() {
     }
   })
 
-  const [tab, setTab] = useState<'record' | 'manage'>('record')
+  const [tab, setTab] = useState<'timing' | 'vehicles' | 'config'>('timing')
   const [managePanel, setManagePanel] = useState<'drivers' | 'events' | null>('drivers')
+  const [vehicleTeamNames, setVehicleTeamNames] = useState<Record<string, string>>({})
+  const [vehicleMarks, setVehicleMarks] = useState<Record<string, '' | '快' | '慢'>>({})
   const [now, setNow] = useState(Date.now())
 
   // 仅用于刷新 UI 倒计时/毫秒显示；真正计时仍用 Date.now() 差值
@@ -790,6 +800,8 @@ export default function App() {
   const [formEventId, setFormEventId] = useState<string | null>(null)
   const [formEventName, setFormEventName] = useState('')
   const [formTeamSize, setFormTeamSize] = useState('')
+  const [formTeamCount, setFormTeamCount] = useState('')
+  const [formPitVehicleCount, setFormPitVehicleCount] = useState('')
   const [formRaceDurationMinutes, setFormRaceDurationMinutes] = useState('')
   const [formMinStints, setFormMinStints] = useState('')
   const [formMaxStintMinutes, setFormMaxStintMinutes] = useState('')
@@ -843,6 +855,8 @@ export default function App() {
     setFormEventId(null)
     setFormEventName('')
     setFormTeamSize('')
+    setFormTeamCount('')
+    setFormPitVehicleCount('')
     setFormRaceDurationMinutes('')
     setFormMinStints('')
     setFormMaxStintMinutes('')
@@ -855,6 +869,8 @@ export default function App() {
     setFormEventId(e.id)
     setFormEventName(e.name)
     setFormTeamSize(String(e.teamSize))
+    setFormTeamCount(String(e.teamCount))
+    setFormPitVehicleCount(String(e.pitVehicleCount))
     setFormRaceDurationMinutes(String(e.raceDurationMinutes))
     setFormMinStints(String(e.minStints))
     setFormMaxStintMinutes(String(e.maxStintMinutes))
@@ -865,6 +881,8 @@ export default function App() {
   const submitEventForm = () => {
     const name = formEventName.trim() || '未命名赛事'
     const teamSize = Math.max(1, Math.floor(Number(formTeamSize) || defaultEvent.teamSize))
+    const teamCount = Math.max(1, Math.floor(Number(formTeamCount) || defaultEvent.teamCount))
+    const pitVehicleCount = Math.max(0, Math.floor(Number(formPitVehicleCount) || defaultEvent.pitVehicleCount))
     const raceDurationMinutes = Math.max(1, Math.floor(Number(formRaceDurationMinutes) || defaultEvent.raceDurationMinutes))
     const minStints = Math.max(0, Math.floor(Number(formMinStints) || defaultEvent.minStints))
     const maxStintMinutes = Math.max(1, Number(formMaxStintMinutes) || defaultEvent.maxStintMinutes)
@@ -880,6 +898,8 @@ export default function App() {
           id: createId('event'),
           name,
           teamSize,
+          teamCount,
+          pitVehicleCount,
           raceDurationMinutes,
           minStints,
           maxStintMinutes,
@@ -895,6 +915,8 @@ export default function App() {
         patch: {
           name,
           teamSize,
+          teamCount,
+          pitVehicleCount,
           raceDurationMinutes,
           minStints,
           maxStintMinutes,
@@ -948,6 +970,8 @@ export default function App() {
         id: String(e.id || `event-${index + 1}`),
         name: String(e.name || `赛事${index + 1}`),
         teamSize: Math.max(1, Math.floor(Number(e.teamSize) || defaultEvent.teamSize)),
+        teamCount: Math.max(1, Math.floor(Number(e.teamCount) || defaultEvent.teamCount)),
+        pitVehicleCount: Math.max(0, Math.floor(Number(e.pitVehicleCount) || defaultEvent.pitVehicleCount)),
         raceDurationMinutes: Math.max(1, Math.floor(Number(e.raceDurationMinutes) || defaultEvent.raceDurationMinutes)),
         minStints: Math.max(0, Math.floor(Number(e.minStints) || defaultEvent.minStints)),
         maxStintMinutes: Math.max(1, Number(e.maxStintMinutes) || defaultEvent.maxStintMinutes),
@@ -966,6 +990,15 @@ export default function App() {
   const pitElapsedMs = pitIsActive ? Math.max(0, now - (state.pitStartTime as number)) : 0
   const minPitMs = Math.max(0, Math.floor(selectedEvent.minPitTimeMinutes * 60000))
   const canEndPit = pitIsActive && pitElapsedMs >= minPitMs
+  const pitCars = useMemo(
+    () => Array.from({ length: Math.max(0, selectedEvent.pitVehicleCount) }, (_, i) => selectedEvent.teamCount + i + 1),
+    [selectedEvent.pitVehicleCount, selectedEvent.teamCount],
+  )
+  const poolCars = useMemo(() => Array.from({ length: Math.max(1, selectedEvent.teamCount) }, (_, i) => i + 1), [selectedEvent.teamCount])
+
+  const getVehicleKey = (carNo: number) => `${selectedEvent.id}-${carNo}`
+  const getVehicleTeamName = (carNo: number) => vehicleTeamNames[getVehicleKey(carNo)] ?? ''
+  const getVehicleMark = (carNo: number) => vehicleMarks[getVehicleKey(carNo)] ?? ''
 
   const canStart = state.activeStintStartTime === null && !pitIsActive && raceDrivers.length > 0
   const canEnd = state.activeStintStartTime !== null && !pitIsActive
@@ -993,10 +1026,54 @@ export default function App() {
     dispatch({ type: 'CANCEL_PIT' })
   }
 
+  const renderVehicleCard = (carNo: number, zoneLabel: string) => {
+    const key = getVehicleKey(carNo)
+    const mark = getVehicleMark(carNo)
+    const teamName = getVehicleTeamName(carNo)
+    return (
+      <article key={key} className="vehicle-card">
+        <div className="vehicle-card-head">
+          <strong>{zoneLabel} · #{carNo}</strong>
+        </div>
+        <label>
+          车队名
+          <input
+            value={teamName}
+            placeholder="点击输入车队名"
+            onChange={(e) => setVehicleTeamNames((prev) => ({ ...prev, [key]: e.target.value }))}
+          />
+        </label>
+        <div className="vehicle-mark-group">
+          <span className="vehicle-mark-title">标注</span>
+          <div className="vehicle-mark-actions">
+            <button
+              type="button"
+              className={mark === '快' ? 'btn-text vehicle-mark-active-fast' : 'btn-text'}
+              onClick={() => setVehicleMarks((prev) => ({ ...prev, [key]: '快' }))}
+            >
+              快
+            </button>
+            <button
+              type="button"
+              className={mark === '慢' ? 'btn-text vehicle-mark-active-slow' : 'btn-text'}
+              onClick={() => setVehicleMarks((prev) => ({ ...prev, [key]: '慢' }))}
+            >
+              慢
+            </button>
+            <button type="button" className="btn-text" onClick={() => setVehicleMarks((prev) => ({ ...prev, [key]: '' }))}>
+              清除
+            </button>
+          </div>
+        </div>
+        <p className="vehicle-pit-count">进站次数：0</p>
+      </article>
+    )
+  }
+
   return (
     <div className="app-shell">
       <main className="app">
-        {tab === 'record' && (
+        {tab === 'timing' && (
           <>
             <header className="manage-brand">
               <h1 className="brand-title">TFG RaceTimer</h1>
@@ -1004,7 +1081,7 @@ export default function App() {
           </>
         )}
 
-        {tab === 'manage' && (
+        {tab === 'config' && (
           <>
             <header className="manage-brand">
               <h1 className="brand-title">TFG RaceTimer</h1>
@@ -1148,6 +1225,14 @@ export default function App() {
                         <input type="number" min={1} value={formTeamSize} onChange={(e) => setFormTeamSize(e.target.value)} />
                       </label>
                       <label>
+                        参赛车队
+                        <input type="number" min={1} value={formTeamCount} onChange={(e) => setFormTeamCount(e.target.value)} />
+                      </label>
+                      <label>
+                        P区车辆
+                        <input type="number" min={0} value={formPitVehicleCount} onChange={(e) => setFormPitVehicleCount(e.target.value)} />
+                      </label>
+                      <label>
                         比赛总时长(分钟)
                         <input type="number" min={1} value={formRaceDurationMinutes} onChange={(e) => setFormRaceDurationMinutes(e.target.value)} />
                       </label>
@@ -1188,7 +1273,9 @@ export default function App() {
                         <div className="driver-info">
                           <strong>{e.name}</strong>
                           <span className="driver-meta">
-                            {e.teamSize} 人 · {e.raceDurationMinutes} 分钟 · 最少棒数 {e.minStints}
+                            上场 {e.teamSize} 人 · 参赛 {e.teamCount} 队 · P区车辆 {e.pitVehicleCount} 台
+                            <br />
+                            总时长 {e.raceDurationMinutes} 分钟 · 最少棒数 {e.minStints}
                             <br />
                             单棒上限 {e.maxStintMinutes} 分钟 · 人员阈值 {e.minDriveTimeMinutes}-{e.maxDriveTimeMinutes} 分钟
                             <br />
@@ -1256,7 +1343,34 @@ export default function App() {
           </>
         )}
 
-        {tab === 'record' && (
+        {tab === 'vehicles' && (
+          <>
+            <header className="manage-brand">
+              <h1 className="brand-title">TFG RaceTimer</h1>
+            </header>
+
+            <section className="card">
+              <h2>车辆</h2>
+              <p className="hint">先完成界面与交互：当前进站次数为展示占位，后续会接入真实计数。</p>
+
+              <div className="vehicle-block">
+                <div className="vehicle-block-head">P区模块（维修区车辆数：{selectedEvent.pitVehicleCount}）</div>
+                <div className="vehicle-grid">
+                  {pitCars.length === 0 ? <p className="hint">当前赛事未配置 P 区车辆。</p> : pitCars.map((carNo) => renderVehicleCard(carNo, 'P区'))}
+                </div>
+              </div>
+
+              <div className="vehicle-block">
+                <div className="vehicle-block-head">车辆池（场上车辆数：{selectedEvent.teamCount}）</div>
+                <div className="vehicle-grid">
+                  {poolCars.map((carNo) => renderVehicleCard(carNo, '车辆池'))}
+                </div>
+              </div>
+            </section>
+          </>
+        )}
+
+        {tab === 'timing' && (
           <>
             <section className="card">
               <div className="section-gap" />
@@ -1265,6 +1379,8 @@ export default function App() {
                 <div className="race-config-title">赛事配置：{selectedEvent.name}</div>
                 <div className="event-config-grid">
                   <div>上场人数：{selectedEvent.teamSize} 人</div>
+                  <div>参赛车队：{selectedEvent.teamCount} 队</div>
+                  <div>P区车辆：{selectedEvent.pitVehicleCount} 台</div>
                   <div>总时长：{selectedEvent.raceDurationMinutes} 分钟</div>
                   <div>最少棒数：{selectedEvent.minStints} </div>
                   <div>单棒最大：{selectedEvent.maxStintMinutes} 分钟</div>
@@ -1445,11 +1561,14 @@ export default function App() {
       </main>
 
       <nav className="bottom-nav" aria-label="主导航">
-        <button type="button" className={tab === 'record' ? 'nav-item active' : 'nav-item'} onClick={() => setTab('record')}>
-          记录
+        <button type="button" className={tab === 'timing' ? 'nav-item active' : 'nav-item'} onClick={() => setTab('timing')}>
+          计时
         </button>
-        <button type="button" className={tab === 'manage' ? 'nav-item active' : 'nav-item'} onClick={() => setTab('manage')}>
-          管理
+        <button type="button" className={tab === 'vehicles' ? 'nav-item active' : 'nav-item'} onClick={() => setTab('vehicles')}>
+          车辆
+        </button>
+        <button type="button" className={tab === 'config' ? 'nav-item active' : 'nav-item'} onClick={() => setTab('config')}>
+          配置
         </button>
       </nav>
     </div>

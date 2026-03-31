@@ -384,6 +384,79 @@ button:disabled {
   margin-bottom: 10px;
 }
 
+.vehicle-block {
+  margin-top: 14px;
+  border: 1px solid #dbe3ec;
+  border-radius: 12px;
+  padding: 10px;
+  background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
+}
+
+.vehicle-block-head {
+  font-size: 14px;
+  font-weight: 900;
+  color: #0f172a;
+  margin-bottom: 8px;
+}
+
+.vehicle-grid {
+  display: grid;
+  gap: 8px;
+}
+
+.vehicle-card {
+  border: 1px solid #d7dde3;
+  border-radius: 10px;
+  background: #fff;
+  padding: 10px;
+  display: grid;
+  gap: 8px;
+}
+
+.vehicle-card-head {
+  font-size: 14px;
+  color: #0f172a;
+}
+
+.vehicle-mark-group {
+  display: grid;
+  gap: 6px;
+}
+
+.vehicle-mark-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: #334155;
+}
+
+.vehicle-mark-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.vehicle-mark-active-fast {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.vehicle-mark-active-slow {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+.vehicle-pit-count {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 700;
+  color: #334155;
+}
+
+@media (min-width: 768px) {
+  .vehicle-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
 .stat-item {
   border: 1px solid #d7dde3;
   border-radius: 10px;
