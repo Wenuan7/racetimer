@@ -1433,7 +1433,8 @@ export default function App() {
             <header className="manage-brand">
               <h1 className="brand-title">TFG RaceTimer</h1>
             </header>
-            <section className="card">
+            <section className="card strategy-card">
+              <div className="section-gap" />
               <h2>策略</h2>
               <p className="hint">SIno开发ing</p>
             </section>
