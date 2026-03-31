@@ -647,7 +647,9 @@ export default function App() {
   const [vehicleTeamNames, setVehicleTeamNames] = useState<Record<string, string>>({})
   const [vehiclePitCounts, setVehiclePitCounts] = useState<Record<string, number>>({})
   const [vehicleMarks, setVehicleMarks] = useState<Record<string, '' | '快' | '慢'>>({})
-  const [pitWaitQueue, setPitWaitQueue] = useState<{ teamName: string; pitCount: number }[]>([])
+  const [pitWaitQueue, setPitWaitQueue] = useState<{ carNo: number; teamName: string; pitCount: number }[]>([])
+  const [poolCars, setPoolCars] = useState<number[]>([])
+  const [pitCars, setPitCars] = useState<number[]>([])
   const [selectedVehicle, setSelectedVehicle] = useState<{ carNo: number; zoneLabel: string } | null>(null)
   const [now, setNow] = useState(Date.now())
 
@@ -993,11 +995,14 @@ export default function App() {
   const pitElapsedMs = pitIsActive ? Math.max(0, now - (state.pitStartTime as number)) : 0
   const minPitMs = Math.max(0, Math.floor(selectedEvent.minPitTimeMinutes * 60000))
   const canEndPit = pitIsActive && pitElapsedMs >= minPitMs
-  const pitCars = useMemo(
-    () => Array.from({ length: Math.max(0, selectedEvent.pitVehicleCount) }, (_, i) => selectedEvent.teamCount + i + 1),
-    [selectedEvent.pitVehicleCount, selectedEvent.teamCount],
-  )
-  const poolCars = useMemo(() => Array.from({ length: Math.max(1, selectedEvent.teamCount) }, (_, i) => i + 1), [selectedEvent.teamCount])
+  useEffect(() => {
+    const nextPoolCars = Array.from({ length: Math.max(1, selectedEvent.teamCount) }, (_, i) => i + 1)
+    const nextPitCars = Array.from({ length: Math.max(0, selectedEvent.pitVehicleCount) }, (_, i) => selectedEvent.teamCount + i + 1)
+    setPoolCars(nextPoolCars)
+    setPitCars(nextPitCars)
+    setPitWaitQueue([])
+    setSelectedVehicle(null)
+  }, [selectedEvent.id, selectedEvent.teamCount, selectedEvent.pitVehicleCount])
 
   const getVehicleKey = (carNo: number) => `${selectedEvent.id}-${carNo}`
   const getVehicleTeamName = (carNo: number) => vehicleTeamNames[getVehicleKey(carNo)] ?? ''
@@ -1005,21 +1010,30 @@ export default function App() {
   const getVehiclePitCount = (carNo: number) => vehiclePitCounts[getVehicleKey(carNo)] ?? 0
 
   const onVehicleInPit = (carNo: number) => {
+    if (!poolCars.includes(carNo)) return
     const key = getVehicleKey(carNo)
     const teamName = getVehicleTeamName(carNo)
     const nextPitCount = getVehiclePitCount(carNo) + 1
-    setPitWaitQueue((prev) => [...prev, { teamName, pitCount: nextPitCount }])
+    setPitWaitQueue((prev) => [...prev, { carNo, teamName, pitCount: nextPitCount }])
     setVehicleTeamNames((prev) => ({ ...prev, [key]: '' }))
     setVehiclePitCounts((prev) => ({ ...prev, [key]: 0 }))
+    setPoolCars((prev) => prev.filter((n) => n !== carNo))
   }
 
   const onVehicleOutPit = (carNo: number) => {
+    if (!pitCars.includes(carNo)) return
     if (pitWaitQueue.length === 0) return
     const key = getVehicleKey(carNo)
     const first = pitWaitQueue[0]
     setPitWaitQueue((prev) => prev.slice(1))
     setVehicleTeamNames((prev) => ({ ...prev, [key]: first.teamName }))
     setVehiclePitCounts((prev) => ({ ...prev, [key]: first.pitCount }))
+    setPoolCars((prev) => [...prev, carNo])
+    // 进站车辆留下：从等待区首位对应车辆进入 P 区
+    setPitCars((prev) => {
+      const leavingPit = prev.filter((n) => n !== carNo)
+      return [...leavingPit, first.carNo]
+    })
   }
 
   const canStart = state.activeStintStartTime === null && !pitIsActive && raceDrivers.length > 0
