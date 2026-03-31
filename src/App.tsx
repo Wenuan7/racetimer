@@ -642,7 +642,7 @@ export default function App() {
     }
   })
 
-  const [tab, setTab] = useState<'timing' | 'vehicles' | 'config'>('timing')
+  const [tab, setTab] = useState<'timing' | 'vehicles' | 'strategy' | 'config'>('timing')
   const [managePanel, setManagePanel] = useState<'drivers' | 'events' | null>('drivers')
   const [vehicleTeamNames, setVehicleTeamNames] = useState<Record<string, string>>({})
   const [vehiclePitCounts, setVehiclePitCounts] = useState<Record<string, number>>({})
@@ -706,18 +706,33 @@ export default function App() {
     dispatch({ type: 'UPDATE_DRIVER', id: driverId, patch: { onRace: true } })
   }
 
-  // 统计：由 stints 聚合
+  // 统计：由 stints 聚合（棒次编号按全队统一顺序）
+  const stintOrderMap = useMemo(() => {
+    const sorted = state.stints
+      .map((s, idx) => ({ idx, startTime: s.startTime }))
+      .sort((a, b) => (a.startTime === b.startTime ? a.idx - b.idx : a.startTime - b.startTime))
+    const map = new Map<number, number>()
+    sorted.forEach((item, orderIdx) => {
+      map.set(item.idx, orderIdx + 1)
+    })
+    return map
+  }, [state.stints])
+
   const driverStats = useMemo(() => {
-    const totals = new Map<string, { totalTime: number; stintCount: number; stints: { duration: number; pitDuration: number | null }[] }>()
-    for (const s of state.stints) {
+    const totals = new Map<
+      string,
+      { totalTime: number; stintCount: number; stints: { duration: number; pitDuration: number | null; teamStintNo: number }[] }
+    >()
+    for (let i = 0; i < state.stints.length; i += 1) {
+      const s = state.stints[i]
       const cur = totals.get(s.driverId) ?? { totalTime: 0, stintCount: 0, stints: [] }
       cur.totalTime += s.duration
       cur.stintCount += 1
-      cur.stints.push({ duration: s.duration, pitDuration: s.pitDuration })
+      cur.stints.push({ duration: s.duration, pitDuration: s.pitDuration, teamStintNo: stintOrderMap.get(i) ?? i + 1 })
       totals.set(s.driverId, cur)
     }
     return totals
-  }, [state.stints])
+  }, [state.stints, stintOrderMap])
 
   const currentDriverTotalMs = useMemo(() => {
     const base = driverStats.get(state.currentDriverId)?.totalTime ?? 0
@@ -1413,6 +1428,18 @@ export default function App() {
           </>
         )}
 
+        {tab === 'strategy' && (
+          <>
+            <header className="manage-brand">
+              <h1 className="brand-title">TFG RaceTimer</h1>
+            </header>
+            <section className="card">
+              <h2>策略</h2>
+              <p className="hint">SIno开发ing</p>
+            </section>
+          </>
+        )}
+
         {tab === 'timing' && (
           <>
             <section className="card">
@@ -1566,7 +1593,9 @@ export default function App() {
 
               <div className="stats">
                 {raceDrivers.map((d) => {
-                  const stat = driverStats.get(d.id) ?? { totalTime: 0, stintCount: 0, stints: [] as { duration: number; pitDuration: number | null }[] }
+                  const stat =
+                    driverStats.get(d.id) ??
+                    ({ totalTime: 0, stintCount: 0, stints: [] as { duration: number; pitDuration: number | null; teamStintNo: number }[] })
                   const totalMin = totalMsToMinutes(stat.totalTime)
                   const isLow = totalMin < selectedEvent.minDriveTimeMinutes
                   const isHigh = totalMin > selectedEvent.maxDriveTimeMinutes
@@ -1585,8 +1614,8 @@ export default function App() {
                           stat.stints.map((item, idx) => (
                             <div key={`${d.id}-stint-${idx}`} className="stint-row">
                               <div className="stint-left">
-                                <div className="stint-index">第 {idx + 1} 棒</div>
-                                <div className="stint-driver">进站时长：{item.pitDuration === null ? '无' : formatDurationMs(item.pitDuration)}</div>
+                                <div className="stint-index">第 {item.teamStintNo} 棒</div>
+                                <div className="stint-driver">进站用时：{item.pitDuration === null ? '无' : formatDurationMs(item.pitDuration)}</div>
                               </div>
                               <div className="stint-duration mono">{formatDurationMs(item.duration)}</div>
                             </div>
@@ -1609,6 +1638,9 @@ export default function App() {
         </button>
         <button type="button" className={tab === 'vehicles' ? 'nav-item active' : 'nav-item'} onClick={() => setTab('vehicles')}>
           车辆
+        </button>
+        <button type="button" className={tab === 'strategy' ? 'nav-item active' : 'nav-item'} onClick={() => setTab('strategy')}>
+          策略
         </button>
         <button type="button" className={tab === 'config' ? 'nav-item active' : 'nav-item'} onClick={() => setTab('config')}>
           配置
