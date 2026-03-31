@@ -399,6 +399,23 @@ button:disabled {
   margin-bottom: 8px;
 }
 
+.vehicle-block-head-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.vehicle-fast-count {
+  font-size: 12px;
+  font-weight: 800;
+  color: #334155;
+  background: #f1f5f9;
+  border: 1px solid #dbe3ec;
+  border-radius: 999px;
+  padding: 2px 8px;
+}
+
 .vehicle-grid {
   display: grid;
   gap: 8px;

@@ -1008,6 +1008,7 @@ export default function App() {
   const getVehicleTeamName = (carNo: number) => vehicleTeamNames[getVehicleKey(carNo)] ?? ''
   const getVehicleMark = (carNo: number) => vehicleMarks[getVehicleKey(carNo)] ?? ''
   const getVehiclePitCount = (carNo: number) => vehiclePitCounts[getVehicleKey(carNo)] ?? 0
+  const pitFastCount = useMemo(() => pitCars.filter((carNo) => getVehicleMark(carNo) === '快').length, [pitCars, vehicleMarks, selectedEvent.id])
 
   const onVehicleInPit = (carNo: number) => {
     if (!poolCars.includes(carNo)) return
@@ -1374,7 +1375,12 @@ export default function App() {
               <h2>车辆</h2>
 
               <div className="vehicle-block">
-                <div className="vehicle-block-head">等待区（先进先出）</div>
+                <div className="vehicle-block-head vehicle-block-head-row">
+                  <span>等待区（先进先出）</span>
+                  <span className="vehicle-fast-count">
+                    快车数量 {pitFastCount}/{pitCars.length}
+                  </span>
+                </div>
                 <div className="waiting-list">
                   {pitWaitQueue.length === 0 ? (
                     <p className="hint">当前无等待出站车辆</p>
