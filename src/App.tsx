@@ -1380,6 +1380,19 @@ export default function App() {
           </>
         )}
 
+        {tab === 'strategy' && (
+          <>
+            <header className="manage-brand">
+              <h1 className="brand-title">TFG RaceTimer</h1>
+            </header>
+            <section className="card">
+              <div className="section-gap" />
+              <h2>策略</h2>
+              <p className="hint">SIno开发ing</p>
+            </section>
+          </>
+        )}
+
         {tab === 'vehicles' && (
           <>
             <header className="manage-brand">
@@ -1424,19 +1437,6 @@ export default function App() {
                   {poolCars.map((carNo) => renderVehicleCard(carNo, '车辆池'))}
                 </div>
               </div>
-            </section>
-          </>
-        )}
-
-        {tab === 'strategy' && (
-          <>
-            <header className="manage-brand">
-              <h1 className="brand-title">TFG RaceTimer</h1>
-            </header>
-            <section className="card strategy-card">
-              <div className="section-gap" />
-              <h2>策略</h2>
-              <p className="hint">SIno开发ing</p>
             </section>
           </>
         )}
@@ -1637,11 +1637,11 @@ export default function App() {
         <button type="button" className={tab === 'timing' ? 'nav-item active' : 'nav-item'} onClick={() => setTab('timing')}>
           计时
         </button>
-        <button type="button" className={tab === 'strategy' ? 'nav-item active' : 'nav-item'} onClick={() => setTab('strategy')}>
-          策略
-        </button>
         <button type="button" className={tab === 'vehicles' ? 'nav-item active' : 'nav-item'} onClick={() => setTab('vehicles')}>
           车辆
+        </button>
+        <button type="button" className={tab === 'strategy' ? 'nav-item active' : 'nav-item'} onClick={() => setTab('strategy')}>
+          策略
         </button>
         <button type="button" className={tab === 'config' ? 'nav-item active' : 'nav-item'} onClick={() => setTab('config')}>
           配置

@@ -300,10 +300,6 @@ h2 {
   box-shadow: 0 8px 24px rgba(15, 23, 42, 0.06);
 }
 
-.strategy-card {
-  min-height: 220px;
-}
-
 .grid {
   display: grid;
   grid-template-columns: 1fr;
@@ -563,11 +559,6 @@ button:disabled {
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-}
-
-.vehicle-card-head {
-  font-size: 14px;
-  color: #0f172a;
 }
 
 .vehicle-mark-group {
