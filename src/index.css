@@ -404,12 +404,53 @@ button:disabled {
   gap: 8px;
 }
 
-.vehicle-card {
+.vehicle-mini {
+  border: 1px solid #d7dde3;
+  border-radius: 10px;
+  background: #fff;
+  padding: 10px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: #0f172a;
+  text-align: left;
+}
+
+.vehicle-mini-no {
+  width: 44px;
+  height: 44px;
+  border-radius: 999px;
+  background: #eff6ff;
+  color: #1d4ed8;
+  font-size: 14px;
+  font-weight: 900;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.vehicle-mini-meta {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  font-size: 12px;
+}
+
+.vehicle-editor {
   border: 1px solid #d7dde3;
   border-radius: 10px;
   background: #fff;
   padding: 10px;
   display: grid;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.vehicle-editor-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
   gap: 8px;
 }
 

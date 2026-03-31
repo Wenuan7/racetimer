@@ -646,6 +646,7 @@ export default function App() {
   const [managePanel, setManagePanel] = useState<'drivers' | 'events' | null>('drivers')
   const [vehicleTeamNames, setVehicleTeamNames] = useState<Record<string, string>>({})
   const [vehicleMarks, setVehicleMarks] = useState<Record<string, '' | '快' | '慢'>>({})
+  const [selectedVehicle, setSelectedVehicle] = useState<{ carNo: number; zoneLabel: string } | null>(null)
   const [now, setNow] = useState(Date.now())
 
   // 仅用于刷新 UI 倒计时/毫秒显示；真正计时仍用 Date.now() 差值
@@ -1031,42 +1032,14 @@ export default function App() {
     const mark = getVehicleMark(carNo)
     const teamName = getVehicleTeamName(carNo)
     return (
-      <article key={key} className="vehicle-card">
-        <div className="vehicle-card-head">
-          <strong>{zoneLabel} · #{carNo}</strong>
+      <button type="button" key={key} className="vehicle-mini" onClick={() => setSelectedVehicle({ carNo, zoneLabel })}>
+        <div className="vehicle-mini-no">#{carNo}</div>
+        <div className="vehicle-mini-meta">
+          <span>{zoneLabel}</span>
+          <span>{teamName || '未绑定车队'}</span>
+          <span>{mark ? `标注:${mark}` : '未标注'}</span>
         </div>
-        <label>
-          车队名
-          <input
-            value={teamName}
-            placeholder="点击输入车队名"
-            onChange={(e) => setVehicleTeamNames((prev) => ({ ...prev, [key]: e.target.value }))}
-          />
-        </label>
-        <div className="vehicle-mark-group">
-          <span className="vehicle-mark-title">标注</span>
-          <div className="vehicle-mark-actions">
-            <button
-              type="button"
-              className={mark === '快' ? 'btn-text vehicle-mark-active-fast' : 'btn-text'}
-              onClick={() => setVehicleMarks((prev) => ({ ...prev, [key]: '快' }))}
-            >
-              快
-            </button>
-            <button
-              type="button"
-              className={mark === '慢' ? 'btn-text vehicle-mark-active-slow' : 'btn-text'}
-              onClick={() => setVehicleMarks((prev) => ({ ...prev, [key]: '慢' }))}
-            >
-              慢
-            </button>
-            <button type="button" className="btn-text" onClick={() => setVehicleMarks((prev) => ({ ...prev, [key]: '' }))}>
-              清除
-            </button>
-          </div>
-        </div>
-        <p className="vehicle-pit-count">进站次数：0</p>
-      </article>
+      </button>
     )
   }
 
@@ -1351,7 +1324,7 @@ export default function App() {
 
             <section className="card">
               <h2>车辆</h2>
-              <p className="hint">先完成界面与交互：当前进站次数为展示占位，后续会接入真实计数。</p>
+              <p className="hint">简洁视图：点击车辆小卡后，在下方绑定详细信息。</p>
 
               <div className="vehicle-block">
                 <div className="vehicle-block-head">P区模块（维修区车辆数：{selectedEvent.pitVehicleCount}）</div>
@@ -1366,6 +1339,74 @@ export default function App() {
                   {poolCars.map((carNo) => renderVehicleCard(carNo, '车辆池'))}
                 </div>
               </div>
+
+              {selectedVehicle && (
+                <div className="vehicle-editor">
+                  <div className="vehicle-editor-head">
+                    <strong>
+                      编辑车辆：{selectedVehicle.zoneLabel} · #{selectedVehicle.carNo}
+                    </strong>
+                    <button type="button" className="btn-text" onClick={() => setSelectedVehicle(null)}>
+                      收起
+                    </button>
+                  </div>
+                  <label>
+                    车队名
+                    <input
+                      value={getVehicleTeamName(selectedVehicle.carNo)}
+                      placeholder="输入车队名"
+                      onChange={(e) =>
+                        setVehicleTeamNames((prev) => ({
+                          ...prev,
+                          [getVehicleKey(selectedVehicle.carNo)]: e.target.value,
+                        }))
+                      }
+                    />
+                  </label>
+                  <div className="vehicle-mark-group">
+                    <span className="vehicle-mark-title">标注</span>
+                    <div className="vehicle-mark-actions">
+                      <button
+                        type="button"
+                        className={getVehicleMark(selectedVehicle.carNo) === '快' ? 'btn-text vehicle-mark-active-fast' : 'btn-text'}
+                        onClick={() =>
+                          setVehicleMarks((prev) => ({
+                            ...prev,
+                            [getVehicleKey(selectedVehicle.carNo)]: '快',
+                          }))
+                        }
+                      >
+                        快
+                      </button>
+                      <button
+                        type="button"
+                        className={getVehicleMark(selectedVehicle.carNo) === '慢' ? 'btn-text vehicle-mark-active-slow' : 'btn-text'}
+                        onClick={() =>
+                          setVehicleMarks((prev) => ({
+                            ...prev,
+                            [getVehicleKey(selectedVehicle.carNo)]: '慢',
+                          }))
+                        }
+                      >
+                        慢
+                      </button>
+                      <button
+                        type="button"
+                        className="btn-text"
+                        onClick={() =>
+                          setVehicleMarks((prev) => ({
+                            ...prev,
+                            [getVehicleKey(selectedVehicle.carNo)]: '',
+                          }))
+                        }
+                      >
+                        清除
+                      </button>
+                    </div>
+                  </div>
+                  <p className="vehicle-pit-count">进站次数：0</p>
+                </div>
+              )}
             </section>
           </>
         )}
