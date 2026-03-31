@@ -1636,11 +1636,11 @@ export default function App() {
         <button type="button" className={tab === 'timing' ? 'nav-item active' : 'nav-item'} onClick={() => setTab('timing')}>
           计时
         </button>
-        <button type="button" className={tab === 'vehicles' ? 'nav-item active' : 'nav-item'} onClick={() => setTab('vehicles')}>
-          车辆
-        </button>
         <button type="button" className={tab === 'strategy' ? 'nav-item active' : 'nav-item'} onClick={() => setTab('strategy')}>
           策略
+        </button>
+        <button type="button" className={tab === 'vehicles' ? 'nav-item active' : 'nav-item'} onClick={() => setTab('vehicles')}>
+          车辆
         </button>
         <button type="button" className={tab === 'config' ? 'nav-item active' : 'nav-item'} onClick={() => setTab('config')}>
           配置
