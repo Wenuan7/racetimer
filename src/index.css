@@ -414,6 +414,7 @@ button:disabled {
   gap: 10px;
   color: #0f172a;
   text-align: left;
+  box-shadow: none;
 }
 
 .vehicle-mini-no {
@@ -428,6 +429,10 @@ button:disabled {
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
+  border: none;
+  box-shadow: none;
+  cursor: pointer;
+  padding: 0;
 }
 
 .vehicle-mini-meta {
@@ -435,19 +440,64 @@ button:disabled {
   gap: 2px;
   min-width: 0;
   font-size: 12px;
+  flex: 1;
 }
 
-.vehicle-editor {
-  border: 1px solid #d7dde3;
-  border-radius: 10px;
+.vehicle-mini-team {
+  font-size: 14px;
+  font-weight: 800;
+  color: #0f172a;
+}
+
+.vehicle-mini-state {
+  width: 44px;
+  height: 44px;
+  border-radius: 999px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  font-weight: 900;
+  color: #fff;
+  flex-shrink: 0;
+}
+
+.vehicle-mini-state.idle {
+  background: #94a3b8;
+}
+
+.vehicle-mini-state.fast {
+  background: #dc2626;
+}
+
+.vehicle-mini-state.slow {
+  background: #2563eb;
+}
+
+.vehicle-modal-mask {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.45);
+  z-index: 40;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding: 0 12px calc(12px + 56px + env(safe-area-inset-bottom, 0px));
+}
+
+.vehicle-modal {
+  width: 100%;
+  max-width: 720px;
+  border-radius: 14px;
   background: #fff;
-  padding: 10px;
+  padding: 12px;
+  border: 1px solid #d7dde3;
+  box-shadow: 0 20px 48px rgba(15, 23, 42, 0.28);
   display: grid;
-  gap: 8px;
-  margin-top: 12px;
+  gap: 10px;
 }
 
-.vehicle-editor-head {
+.vehicle-modal-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
