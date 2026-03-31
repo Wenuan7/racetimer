@@ -1358,6 +1358,7 @@ export default function App() {
 
             <section className="card">
               <h2>车辆</h2>
+
               <div className="vehicle-block">
                 <div className="vehicle-block-head">等待区（先进先出）</div>
                 <div className="waiting-list">
