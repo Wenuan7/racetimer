@@ -52,7 +52,7 @@ type AppState = {
   pitStartTime: number | null
   pitPrevDriverId: string | null
   pitNextDriverId: string | null
-  pitStintIndex: number | null
+  pitStintStartTime: number | null
 
   alerts: {
     minDriveWarnedDriverIds: string[]
@@ -86,6 +86,7 @@ type Action =
   | { type: 'MARK_MAX_DRIVER_WARNED'; driverId: string }
   | { type: 'START_PIT'; now: number }
   | { type: 'END_PIT'; now: number }
+  | { type: 'CANCEL_PIT' }
 
 const STORAGE_KEY = 'kart-endurance-mvp-state'
 const PERSIST_VERSION = 4
@@ -141,7 +142,7 @@ const defaultState: AppState = {
   pitStartTime: null,
   pitPrevDriverId: null,
   pitNextDriverId: null,
-  pitStintIndex: null,
+  pitStintStartTime: null,
 
   alerts: {
     minDriveWarnedDriverIds: [],
@@ -259,7 +260,8 @@ function normalizeState(raw: unknown): AppState {
   const pitStartTime = typeof (obj as any).pitStartTime === 'number' ? ((obj as any).pitStartTime as number) : null
   const pitPrevDriverId = typeof (obj as any).pitPrevDriverId === 'string' ? ((obj as any).pitPrevDriverId as string) : null
   const pitNextDriverId = typeof (obj as any).pitNextDriverId === 'string' ? ((obj as any).pitNextDriverId as string) : null
-  const pitStintIndex = typeof (obj as any).pitStintIndex === 'number' ? Math.max(0, Math.floor((obj as any).pitStintIndex as number)) : null
+  const pitStintStartTime =
+    typeof (obj as any).pitStintStartTime === 'number' ? Math.max(0, Math.floor((obj as any).pitStintStartTime as number)) : null
 
   const alertsRaw = (obj as any).alerts
   const alerts = {
@@ -338,7 +340,7 @@ function normalizeState(raw: unknown): AppState {
     pitStartTime,
     pitPrevDriverId,
     pitNextDriverId,
-    pitStintIndex,
+    pitStintStartTime,
     alerts,
   }
 }
@@ -449,7 +451,7 @@ function reducer(state: AppState, action: Action): AppState {
         pitStartTime,
         pitPrevDriverId: pitStartTime ? state.pitPrevDriverId : null,
         pitNextDriverId: pitStartTime ? state.pitNextDriverId : null,
-        pitStintIndex: pitStartTime ? state.pitStintIndex : null,
+        pitStintStartTime: pitStartTime ? state.pitStintStartTime : null,
       })
     }
 
@@ -486,7 +488,7 @@ function reducer(state: AppState, action: Action): AppState {
         pitStartTime: null,
         pitPrevDriverId: null,
         pitNextDriverId: null,
-        pitStintIndex: null,
+        pitStintStartTime: null,
         alerts: {
           minDriveWarnedDriverIds: [],
           maxStintWarned: false,
@@ -529,7 +531,7 @@ function reducer(state: AppState, action: Action): AppState {
         pitStartTime: null,
         pitPrevDriverId: null,
         pitNextDriverId: null,
-        pitStintIndex: null,
+        pitStintStartTime: null,
         alerts: {
           minDriveWarnedDriverIds: [],
           maxStintWarned: false,
@@ -568,48 +570,52 @@ function reducer(state: AppState, action: Action): AppState {
       if (state.pitStartTime !== null) return state
       const now = action.now
 
-      const duration = Math.max(0, now - state.activeStintStartTime)
-      const stint: Stint = {
-        driverId: state.currentDriverId,
-        startTime: state.activeStintStartTime,
-        endTime: now,
-        duration,
-        pitDuration: null,
-      }
-
-      const nextStints = [...state.stints, stint]
-      const pitStintIndex = nextStints.length - 1
-
       return {
         ...state,
-        stints: nextStints,
         activeStintStartTime: null,
         pitStartTime: now,
         pitPrevDriverId: state.currentDriverId,
         pitNextDriverId: state.replacementDriverId,
-        pitStintIndex,
+        pitStintStartTime: state.activeStintStartTime,
       }
     }
 
     case 'END_PIT': {
       if (state.pitStartTime === null) return state
       if (!state.pitPrevDriverId || !state.pitNextDriverId) return state
+      if (state.pitStintStartTime === null) return state
       const end = action.now
       const pitDuration = Math.max(0, end - state.pitStartTime)
-      let nextStints = state.stints
-      if (state.pitStintIndex !== null && state.stints[state.pitStintIndex]) {
-        nextStints = state.stints.map((s, idx) => (idx === state.pitStintIndex ? { ...s, pitDuration } : s))
+      const duration = Math.max(0, state.pitStartTime - state.pitStintStartTime)
+      const stint: Stint = {
+        driverId: state.pitPrevDriverId,
+        startTime: state.pitStintStartTime,
+        endTime: state.pitStartTime,
+        duration,
+        pitDuration,
       }
       return {
         ...state,
-        stints: nextStints,
+        stints: [...state.stints, stint],
         currentDriverId: state.pitNextDriverId,
         replacementDriverId: state.pitPrevDriverId,
         activeStintStartTime: end,
         pitStartTime: null,
         pitPrevDriverId: null,
         pitNextDriverId: null,
-        pitStintIndex: null,
+        pitStintStartTime: null,
+      }
+    }
+    case 'CANCEL_PIT': {
+      if (state.pitStartTime === null) return state
+      if (!state.pitPrevDriverId || state.pitStintStartTime === null) return state
+      return {
+        ...state,
+        activeStintStartTime: state.pitStintStartTime,
+        pitStartTime: null,
+        pitPrevDriverId: null,
+        pitNextDriverId: null,
+        pitStintStartTime: null,
       }
     }
 
@@ -980,6 +986,13 @@ export default function App() {
     dispatch({ type: 'RESET_RACE_RECORD' })
   }
 
+  const onCancelPit = () => {
+    if (!pitIsActive) return
+    const ok = window.confirm('确认取消进站？取消后不记录本次进站，也不新增棒次。')
+    if (!ok) return
+    dispatch({ type: 'CANCEL_PIT' })
+  }
+
   return (
     <div className="app-shell">
       <main className="app">
@@ -1319,11 +1332,11 @@ export default function App() {
               <div className="actions">
                 {pitIsActive ? (
                   <>
-                    <button type="button" className="stop" disabled={!canEndPit} onClick={() => dispatch({ type: 'END_PIT', now: Date.now() })}>
-                      结束进站
+                    <button type="button" className="stop" onClick={onCancelPit}>
+                      取消进站
                     </button>
-                    <button type="button" className="start" disabled>
-                      {canEndPit ? '可换车' : `至少进站 ${selectedEvent.minPitTimeMinutes} 分钟`}
+                    <button type="button" className="start" disabled={!canEndPit} onClick={() => dispatch({ type: 'END_PIT', now: Date.now() })}>
+                      {canEndPit ? '结束进站' : `至少进站${selectedEvent.minPitTimeMinutes}分钟`}
                     </button>
                   </>
                 ) : state.activeStintStartTime === null ? (
