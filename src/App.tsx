@@ -645,7 +645,9 @@ export default function App() {
   const [tab, setTab] = useState<'timing' | 'vehicles' | 'config'>('timing')
   const [managePanel, setManagePanel] = useState<'drivers' | 'events' | null>('drivers')
   const [vehicleTeamNames, setVehicleTeamNames] = useState<Record<string, string>>({})
+  const [vehiclePitCounts, setVehiclePitCounts] = useState<Record<string, number>>({})
   const [vehicleMarks, setVehicleMarks] = useState<Record<string, '' | '快' | '慢'>>({})
+  const [pitWaitQueue, setPitWaitQueue] = useState<{ teamName: string; pitCount: number }[]>([])
   const [selectedVehicle, setSelectedVehicle] = useState<{ carNo: number; zoneLabel: string } | null>(null)
   const [now, setNow] = useState(Date.now())
 
@@ -1000,7 +1002,25 @@ export default function App() {
   const getVehicleKey = (carNo: number) => `${selectedEvent.id}-${carNo}`
   const getVehicleTeamName = (carNo: number) => vehicleTeamNames[getVehicleKey(carNo)] ?? ''
   const getVehicleMark = (carNo: number) => vehicleMarks[getVehicleKey(carNo)] ?? ''
-  const getVehiclePitCount = (_carNo: number) => 0
+  const getVehiclePitCount = (carNo: number) => vehiclePitCounts[getVehicleKey(carNo)] ?? 0
+
+  const onVehicleInPit = (carNo: number) => {
+    const key = getVehicleKey(carNo)
+    const teamName = getVehicleTeamName(carNo)
+    const nextPitCount = getVehiclePitCount(carNo) + 1
+    setPitWaitQueue((prev) => [...prev, { teamName, pitCount: nextPitCount }])
+    setVehicleTeamNames((prev) => ({ ...prev, [key]: '' }))
+    setVehiclePitCounts((prev) => ({ ...prev, [key]: 0 }))
+  }
+
+  const onVehicleOutPit = (carNo: number) => {
+    if (pitWaitQueue.length === 0) return
+    const key = getVehicleKey(carNo)
+    const first = pitWaitQueue[0]
+    setPitWaitQueue((prev) => prev.slice(1))
+    setVehicleTeamNames((prev) => ({ ...prev, [key]: first.teamName }))
+    setVehiclePitCounts((prev) => ({ ...prev, [key]: first.pitCount }))
+  }
 
   const canStart = state.activeStintStartTime === null && !pitIsActive && raceDrivers.length > 0
   const canEnd = state.activeStintStartTime !== null && !pitIsActive
@@ -1032,6 +1052,9 @@ export default function App() {
     const key = getVehicleKey(carNo)
     const mark = getVehicleMark(carNo)
     const teamName = getVehicleTeamName(carNo)
+    const isPool = zoneLabel === '车辆池'
+    const canInPit = isPool && (teamName.trim().length > 0 || getVehiclePitCount(carNo) > 0)
+    const canOutPit = !isPool && pitWaitQueue.length > 0
     return (
       <article key={key} className="vehicle-mini">
         <button type="button" className="vehicle-mini-no" onClick={() => setSelectedVehicle({ carNo, zoneLabel })}>
@@ -1041,7 +1064,15 @@ export default function App() {
           <span className="vehicle-mini-team">{teamName || '未命名'}</span>
           <span>进站次数：{getVehiclePitCount(carNo)}</span>
         </div>
-        <div className={`vehicle-mini-state ${mark === '快' ? 'fast' : mark === '慢' ? 'slow' : 'idle'}`}>{mark || '—'}</div>
+        <div className={`vehicle-mini-state ${mark === '快' ? 'fast' : mark === '慢' ? 'slow' : 'idle'}`}>{mark || ''}</div>
+        <button
+          type="button"
+          className={isPool ? 'vehicle-action-btn in' : 'vehicle-action-btn out'}
+          disabled={isPool ? !canInPit : !canOutPit}
+          onClick={() => (isPool ? onVehicleInPit(carNo) : onVehicleOutPit(carNo))}
+        >
+          {isPool ? '进站' : '出站'}
+        </button>
       </article>
     )
   }
@@ -1340,6 +1371,23 @@ export default function App() {
                 <div className="vehicle-block-head">车辆池（场上车辆数：{selectedEvent.teamCount}）</div>
                 <div className="vehicle-grid">
                   {poolCars.map((carNo) => renderVehicleCard(carNo, '车辆池'))}
+                </div>
+              </div>
+
+              <div className="vehicle-block">
+                <div className="vehicle-block-head">等待区（先进先出）</div>
+                <div className="waiting-list">
+                  {pitWaitQueue.length === 0 ? (
+                    <p className="hint">当前无等待出站车辆</p>
+                  ) : (
+                    pitWaitQueue.map((item, idx) => (
+                      <div key={`wait-${idx}`} className="waiting-item">
+                        <span>#{idx + 1}</span>
+                        <span>{item.teamName || '未命名'}</span>
+                        <span>进站次数：{item.pitCount}</span>
+                      </div>
+                    ))
+                  )}
                 </div>
               </div>
             </section>

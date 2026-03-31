@@ -460,6 +460,7 @@ button:disabled {
   font-weight: 900;
   color: #fff;
   flex-shrink: 0;
+  margin-right: 2px;
 }
 
 .vehicle-mini-state.idle {
@@ -472,6 +473,45 @@ button:disabled {
 
 .vehicle-mini-state.slow {
   background: #2563eb;
+}
+
+.vehicle-action-btn {
+  border: none;
+  border-radius: 10px;
+  padding: 10px 12px;
+  font-size: 13px;
+  font-weight: 800;
+  color: #fff;
+  box-shadow: none;
+}
+
+.vehicle-action-btn.in {
+  background: #0f9d58;
+}
+
+.vehicle-action-btn.out {
+  background: #f59e0b;
+}
+
+.vehicle-action-btn:disabled {
+  opacity: 0.45;
+}
+
+.waiting-list {
+  display: grid;
+  gap: 8px;
+}
+
+.waiting-item {
+  border: 1px solid #d7dde3;
+  border-radius: 10px;
+  background: #fff;
+  padding: 8px 10px;
+  display: grid;
+  grid-template-columns: 44px 1fr auto;
+  gap: 8px;
+  align-items: center;
+  font-size: 13px;
 }
 
 .vehicle-modal-mask {
