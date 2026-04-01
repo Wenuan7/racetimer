@@ -19,6 +19,13 @@ type Stint = {
   pitDuration: number | null
 }
 
+// 维修区等待队列（可拖拽排序）
+type PitWaitEntry = { id: string; carNo: number; teamName: string; pitCount: number }
+
+// 车辆等级（跟随车号）
+type VehicleGrade = '' | 'S' | 'A' | 'B' | 'C' | 'G'
+const VEHICLE_GRADES: Exclude<VehicleGrade, ''>[] = ['S', 'A', 'B', 'C', 'G']
+
 // 赛事规则
 type EventRule = {
   id: string
@@ -153,6 +160,58 @@ const defaultState: AppState = {
     maxStintWarned: false,
     maxDriverWarnedDriverIds: [],
   },
+}
+
+/** 修复损坏的进站/驾驶状态，避免进站中无法结束/取消、按钮看似失效 */
+function sanitizeTimingState(state: AppState): AppState {
+  if (state.pitStartTime !== null) {
+    const driverIds = new Set(state.drivers.map((d) => d.id))
+    const pitStartTime = state.pitStartTime
+    const t0 = state.pitStintStartTime
+    const prev = state.pitPrevDriverId
+    const next = state.pitNextDriverId
+
+    const validPit =
+      typeof pitStartTime === 'number' &&
+      Number.isFinite(pitStartTime) &&
+      typeof t0 === 'number' &&
+      Number.isFinite(t0) &&
+      typeof prev === 'string' &&
+      prev.length > 0 &&
+      driverIds.has(prev) &&
+      typeof next === 'string' &&
+      next.length > 0 &&
+      driverIds.has(next) &&
+      prev !== next
+
+    if (!validPit) {
+      return {
+        ...state,
+        activeStintStartTime: state.activeStintStartTime ?? state.pitStintStartTime,
+        pitStartTime: null,
+        pitPrevDriverId: null,
+        pitNextDriverId: null,
+        pitStintStartTime: null,
+      }
+    }
+
+    if (state.activeStintStartTime !== null) {
+      return { ...state, activeStintStartTime: null }
+    }
+
+    return state
+  }
+
+  if (state.pitPrevDriverId !== null || state.pitNextDriverId !== null || state.pitStintStartTime !== null) {
+    return {
+      ...state,
+      pitPrevDriverId: null,
+      pitNextDriverId: null,
+      pitStintStartTime: null,
+    }
+  }
+
+  return state
 }
 
 function normalizeState(raw: unknown): AppState {
@@ -336,7 +395,7 @@ function normalizeState(raw: unknown): AppState {
     finalReplacementDriverId = raceDriversLimited.find((d) => d.id !== finalCurrentDriverId)?.id ?? finalReplacementDriverId
   }
 
-  return {
+  return sanitizeTimingState({
     drivers: limitedDriversRaw,
     stints,
     events: mergedEvents,
@@ -350,7 +409,7 @@ function normalizeState(raw: unknown): AppState {
     pitNextDriverId,
     pitStintStartTime,
     alerts,
-  }
+  })
 }
 
 function safeNormalizeState(raw: unknown): AppState {
@@ -616,10 +675,9 @@ function reducer(state: AppState, action: Action): AppState {
     }
     case 'CANCEL_PIT': {
       if (state.pitStartTime === null) return state
-      if (!state.pitPrevDriverId || state.pitStintStartTime === null) return state
       return {
         ...state,
-        activeStintStartTime: state.pitStintStartTime,
+        activeStintStartTime: state.pitStintStartTime ?? state.activeStintStartTime,
         pitStartTime: null,
         pitPrevDriverId: null,
         pitNextDriverId: null,
@@ -632,8 +690,12 @@ function reducer(state: AppState, action: Action): AppState {
   }
 }
 
+function timingReducer(state: AppState, action: Action): AppState {
+  return sanitizeTimingState(reducer(state, action))
+}
+
 export default function App() {
-  const [state, dispatch] = useReducer(reducer, defaultState, () => {
+  const [state, dispatch] = useReducer(timingReducer, defaultState, () => {
     try {
       const saved = localStorage.getItem(STORAGE_KEY)
       return saved ? safeNormalizeState(JSON.parse(saved)) : defaultState
@@ -646,11 +708,12 @@ export default function App() {
   const [managePanel, setManagePanel] = useState<'drivers' | 'events' | null>('drivers')
   const [vehicleTeamNames, setVehicleTeamNames] = useState<Record<string, string>>({})
   const [vehiclePitCounts, setVehiclePitCounts] = useState<Record<string, number>>({})
-  const [vehicleMarks, setVehicleMarks] = useState<Record<string, '' | '快' | '慢'>>({})
-  const [pitWaitQueue, setPitWaitQueue] = useState<{ carNo: number; teamName: string; pitCount: number }[]>([])
+  const [vehicleMarks, setVehicleMarks] = useState<Record<string, VehicleGrade>>({})
+  const [pitWaitQueue, setPitWaitQueue] = useState<PitWaitEntry[]>([])
   const [poolCars, setPoolCars] = useState<number[]>([])
   const [pitCars, setPitCars] = useState<number[]>([])
   const [selectedVehicle, setSelectedVehicle] = useState<{ carNo: number; zoneLabel: string } | null>(null)
+  const [waitDragOverIdx, setWaitDragOverIdx] = useState<number | null>(null)
   const [now, setNow] = useState(Date.now())
 
   // 仅用于刷新 UI 倒计时/毫秒显示；真正计时仍用 Date.now() 差值
@@ -1008,7 +1071,7 @@ export default function App() {
 
   const pitIsActive = state.pitStartTime !== null
   const pitElapsedMs = pitIsActive ? Math.max(0, now - (state.pitStartTime as number)) : 0
-  const minPitMs = Math.max(0, Math.floor(selectedEvent.minPitTimeMinutes * 60000))
+  const minPitMs = Math.max(0, Math.floor(finiteNum(selectedEvent.minPitTimeMinutes, defaultEvent.minPitTimeMinutes) * 60000))
   const canEndPit = pitIsActive && pitElapsedMs >= minPitMs
   useEffect(() => {
     const nextPoolCars = Array.from({ length: Math.max(1, selectedEvent.teamCount) }, (_, i) => i + 1)
@@ -1021,16 +1084,19 @@ export default function App() {
 
   const getVehicleKey = (carNo: number) => `${selectedEvent.id}-${carNo}`
   const getVehicleTeamName = (carNo: number) => vehicleTeamNames[getVehicleKey(carNo)] ?? ''
-  const getVehicleMark = (carNo: number) => vehicleMarks[getVehicleKey(carNo)] ?? ''
+  const getVehicleGrade = (carNo: number): VehicleGrade => {
+    const v = vehicleMarks[getVehicleKey(carNo)] ?? ''
+    return VEHICLE_GRADES.includes(v as Exclude<VehicleGrade, ''>) ? (v as Exclude<VehicleGrade, ''>) : ''
+  }
   const getVehiclePitCount = (carNo: number) => vehiclePitCounts[getVehicleKey(carNo)] ?? 0
-  const pitFastCount = useMemo(() => pitCars.filter((carNo) => getVehicleMark(carNo) === '快').length, [pitCars, vehicleMarks, selectedEvent.id])
+  const pitGradeSCount = useMemo(() => pitCars.filter((carNo) => getVehicleGrade(carNo) === 'S').length, [pitCars, vehicleMarks, selectedEvent.id])
 
   const onVehicleInPit = (carNo: number) => {
     if (!poolCars.includes(carNo)) return
     const key = getVehicleKey(carNo)
     const teamName = getVehicleTeamName(carNo)
     const nextPitCount = getVehiclePitCount(carNo) + 1
-    setPitWaitQueue((prev) => [...prev, { carNo, teamName, pitCount: nextPitCount }])
+    setPitWaitQueue((prev) => [...prev, { id: createId('wait'), carNo, teamName, pitCount: nextPitCount }])
     setVehicleTeamNames((prev) => ({ ...prev, [key]: '' }))
     setVehiclePitCounts((prev) => ({ ...prev, [key]: 0 }))
     setPoolCars((prev) => prev.filter((n) => n !== carNo))
@@ -1049,6 +1115,17 @@ export default function App() {
     setPitCars((prev) => {
       const leavingPit = prev.filter((n) => n !== carNo)
       return [...leavingPit, first.carNo]
+    })
+  }
+
+  const reorderWaitQueue = (from: number, to: number) => {
+    if (from === to) return
+    setPitWaitQueue((prev) => {
+      if (from < 0 || to < 0 || from >= prev.length || to >= prev.length) return prev
+      const next = [...prev]
+      const [item] = next.splice(from, 1)
+      next.splice(to, 0, item)
+      return next
     })
   }
 
@@ -1080,7 +1157,7 @@ export default function App() {
 
   const renderVehicleCard = (carNo: number, zoneLabel: string) => {
     const key = getVehicleKey(carNo)
-    const mark = getVehicleMark(carNo)
+    const grade = getVehicleGrade(carNo)
     const teamName = getVehicleTeamName(carNo)
     const isPool = zoneLabel === '车辆池'
     const canInPit = isPool
@@ -1094,7 +1171,7 @@ export default function App() {
           <span className="vehicle-mini-team">{teamName || '未命名'}</span>
           <span>进站次数：{getVehiclePitCount(carNo)}</span>
         </div>
-        <div className={`vehicle-mini-state ${mark === '快' ? 'fast' : mark === '慢' ? 'slow' : 'idle'}`}>{mark || ''}</div>
+        <div className={`vehicle-mini-grade ${grade ? 'has-grade' : ''}`}>{grade || ''}</div>
         <button
           type="button"
           className={isPool ? 'vehicle-action-btn in' : 'vehicle-action-btn out'}
@@ -1404,20 +1481,44 @@ export default function App() {
 
               <div className="vehicle-block">
                 <div className="vehicle-block-head vehicle-block-head-row">
-                  <span>等待区（先进先出）</span>
+                  <span>等待区（可拖拽排序）</span>
                   <span className="vehicle-fast-count">
-                    快车数量 {pitFastCount}/{pitCars.length}
+                    P区 S级 {pitGradeSCount}/{pitCars.length}
                   </span>
                 </div>
+                <p className="hint waiting-drag-hint">拖拽条目可调整队列顺序；默认仍按先进先出出站。</p>
                 <div className="waiting-list">
                   {pitWaitQueue.length === 0 ? (
                     <p className="hint">当前无等待出站车辆</p>
                   ) : (
                     pitWaitQueue.map((item, idx) => (
-                      <div key={`wait-${idx}`} className="waiting-item">
-                        <span>#{idx + 1}</span>
+                      <div
+                        key={item.id}
+                        role="listitem"
+                        className={`waiting-item ${waitDragOverIdx === idx ? 'waiting-item-over' : ''}`}
+                        draggable
+                        onDragStart={(e) => {
+                          e.dataTransfer.effectAllowed = 'move'
+                          e.dataTransfer.setData('application/pit-wait-index', String(idx))
+                        }}
+                        onDragOver={(e) => {
+                          e.preventDefault()
+                          e.dataTransfer.dropEffect = 'move'
+                        }}
+                        onDragEnter={() => setWaitDragOverIdx(idx)}
+                        onDragEnd={() => setWaitDragOverIdx(null)}
+                        onDrop={(e) => {
+                          e.preventDefault()
+                          const from = Number(e.dataTransfer.getData('application/pit-wait-index'))
+                          if (!Number.isFinite(from)) return
+                          reorderWaitQueue(from, idx)
+                          setWaitDragOverIdx(null)
+                        }}
+                      >
+                        <span className="waiting-rank">#{idx + 1}</span>
+                        <span className="waiting-car-no mono">车{item.carNo}</span>
                         <span>{item.teamName || '未命名'}</span>
-                        <span>进站次数：{item.pitCount}</span>
+                        <span>进站{item.pitCount}次</span>
                       </div>
                     ))
                   )}
@@ -1690,32 +1791,23 @@ export default function App() {
               />
             </label>
             <div className="vehicle-mark-group">
-              <span className="vehicle-mark-title">标注</span>
-              <div className="vehicle-mark-actions">
-                <button
-                  type="button"
-                  className={getVehicleMark(selectedVehicle.carNo) === '快' ? 'btn-text vehicle-mark-active-fast' : 'btn-text'}
-                  onClick={() =>
-                    setVehicleMarks((prev) => ({
-                      ...prev,
-                      [getVehicleKey(selectedVehicle.carNo)]: '快',
-                    }))
-                  }
-                >
-                  快
-                </button>
-                <button
-                  type="button"
-                  className={getVehicleMark(selectedVehicle.carNo) === '慢' ? 'btn-text vehicle-mark-active-slow' : 'btn-text'}
-                  onClick={() =>
-                    setVehicleMarks((prev) => ({
-                      ...prev,
-                      [getVehicleKey(selectedVehicle.carNo)]: '慢',
-                    }))
-                  }
-                >
-                  慢
-                </button>
+              <span className="vehicle-mark-title">等级</span>
+              <div className="vehicle-mark-actions vehicle-grade-actions">
+                {VEHICLE_GRADES.map((g) => (
+                  <button
+                    key={g}
+                    type="button"
+                    className={`btn-text vehicle-grade-btn ${getVehicleGrade(selectedVehicle.carNo) === g ? 'vehicle-grade-btn-active' : ''}`}
+                    onClick={() =>
+                      setVehicleMarks((prev) => ({
+                        ...prev,
+                        [getVehicleKey(selectedVehicle.carNo)]: g,
+                      }))
+                    }
+                  >
+                    {g}
+                  </button>
+                ))}
                 <button
                   type="button"
                   className="btn-text"

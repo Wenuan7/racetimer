@@ -466,7 +466,7 @@ button:disabled {
   color: #0f172a;
 }
 
-.vehicle-mini-state {
+.vehicle-mini-grade {
   width: 44px;
   height: 44px;
   border-radius: 999px;
@@ -475,21 +475,16 @@ button:disabled {
   justify-content: center;
   font-size: 14px;
   font-weight: 900;
-  color: #fff;
   flex-shrink: 0;
   margin-right: 2px;
+  border: 1px solid #cbd5e1;
+  background: #fff;
+  color: #0f172a;
 }
 
-.vehicle-mini-state.idle {
-  background: #94a3b8;
-}
-
-.vehicle-mini-state.fast {
-  background: #dc2626;
-}
-
-.vehicle-mini-state.slow {
-  background: #2563eb;
+.vehicle-mini-grade:not(.has-grade) {
+  border-style: dashed;
+  color: transparent;
 }
 
 .vehicle-action-btn {
@@ -519,16 +514,42 @@ button:disabled {
   gap: 8px;
 }
 
+.waiting-drag-hint {
+  margin: 0 0 8px;
+  font-size: 12px;
+}
+
 .waiting-item {
   border: 1px solid #d7dde3;
   border-radius: 10px;
   background: #fff;
   padding: 8px 10px;
   display: grid;
-  grid-template-columns: 44px 1fr auto;
+  grid-template-columns: 40px minmax(48px, auto) 1fr auto;
   gap: 8px;
   align-items: center;
   font-size: 13px;
+  cursor: grab;
+  user-select: none;
+}
+
+.waiting-item:active {
+  cursor: grabbing;
+}
+
+.waiting-item-over {
+  box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.65);
+  background: #eff6ff;
+}
+
+.waiting-rank {
+  font-weight: 900;
+  color: #64748b;
+}
+
+.waiting-car-no {
+  font-weight: 800;
+  color: #1d4ed8;
 }
 
 .vehicle-modal-mask {
@@ -577,14 +598,18 @@ button:disabled {
   gap: 6px;
 }
 
-.vehicle-mark-active-fast {
-  background: #dcfce7;
-  color: #166534;
+.vehicle-grade-actions {
+  flex-wrap: wrap;
 }
 
-.vehicle-mark-active-slow {
-  background: #fee2e2;
-  color: #991b1b;
+.vehicle-grade-btn {
+  min-width: 40px;
+  justify-content: center;
+}
+
+.vehicle-grade-btn-active {
+  box-shadow: inset 0 0 0 2px #0f172a;
+  font-weight: 900;
 }
 
 .vehicle-pit-count {
