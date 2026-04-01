@@ -1156,9 +1156,30 @@ button:disabled {
 }
 
 .login-gate-shell {
+  min-height: 100dvh;
+  padding: 24px 16px;
+  padding-bottom: calc(10px + env(safe-area-inset-bottom, 0px));
+  box-sizing: border-box;
+}
+
+.login-gate-center {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
   justify-content: center;
   align-items: center;
-  padding: 24px 16px;
+  width: 100%;
+  min-height: 0;
+}
+
+.login-gate-version {
+  margin: 0;
+  padding-top: 12px;
+  text-align: center;
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  color: #94a3b8;
 }
 
 .login-gate-card {
