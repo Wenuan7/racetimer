@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react'
+import { formatMsAsMinSecMs, parseCompactDurationMs, sanitizeDurationDigitInput } from './compactTimeDigits'
 
 const TEAM_KEYS = ['A', 'B', 'C', 'D'] as const
 type TeamKey = (typeof TEAM_KEYS)[number]
@@ -8,11 +9,11 @@ type TeamForm = {
   lapsStr: string
   pitStr: string
   lapSamplesMs: number[]
-  lapInputSec: string
+  lapInputDigits: string
 }
 
 function emptyTeam(): TeamForm {
-  return { name: '', lapsStr: '', pitStr: '', lapSamplesMs: [], lapInputSec: '' }
+  return { name: '', lapsStr: '', pitStr: '', lapSamplesMs: [], lapInputDigits: '' }
 }
 
 function formatDurationMs(ms: number): string {
@@ -32,9 +33,9 @@ function formatDurationMs(ms: number): string {
   return `${sign}${totalMin}:${sStr}.${msStr}`
 }
 
-function formatSecPerLap(sec: number): string {
+function formatPaceSecPerLap(sec: number): string {
   if (!Number.isFinite(sec) || sec <= 0) return '—'
-  return `${sec.toFixed(3)} 秒/圈`
+  return `${formatMsAsMinSecMs(sec * 1000)} /圈`
 }
 
 function avgMs(samples: number[]): number | null {
@@ -48,7 +49,6 @@ function parseNonNegInt(s: string): number {
   return Number.isFinite(n) && n >= 0 ? n : 0
 }
 
-/** 赛事「最少进站次数」= max(0, 最低棒数 − 1)；剩余进站 = 该项 − 已填进站次数 */
 function minRequiredPitStops(minStints: number): number {
   return Math.max(0, minStints - 1)
 }
@@ -57,7 +57,6 @@ function remainingPitStops(pitCount: number, minStints: number): number {
   return Math.max(0, minRequiredPitStops(minStints) - pitCount)
 }
 
-/** 仅当队名（B/C/D 必填）、当前圈数、进站次数均已填写，且至少有一条圈速样本时参与对比；A 队队名可空（显示为本队） */
 function isTeamComplete(f: TeamForm, key: TeamKey): boolean {
   if (f.lapsStr.trim() === '' || f.pitStr.trim() === '' || f.lapSamplesMs.length === 0) return false
   if (key !== 'A' && f.name.trim() === '') return false
@@ -75,18 +74,15 @@ type RowMetrics = {
   laps: number
   lapGap: number
   avgLapMs: number | null
-  avgLapSec: number | null
   pitCatchUpMs: number
   pitCatchUpLaps: number | null
   theoreticalFinalLaps: number | null
-  /** 本队落后该对手时：本队为追平对方理论最终圈所需的均圈（秒/圈） */
   paceToCatchSec: number | null
-  /** 本队领先或持平该对手时：对方为追平本队理论最终圈所需的均圈（秒/圈） */
   paceOppCatchUsSec: number | null
 }
 
 export default function StrategyAnalysis({ minStints, minPitTimeMinutes }: StrategyAnalysisProps) {
-  const [raceRemainMinStr, setRaceRemainMinStr] = useState('')
+  const [raceRemainDigitsStr, setRaceRemainDigitsStr] = useState('')
   const [teams, setTeams] = useState<Record<TeamKey, TeamForm>>(() => {
     const base: Record<TeamKey, TeamForm> = {
       A: { ...emptyTeam(), name: '本队' },
@@ -98,18 +94,22 @@ export default function StrategyAnalysis({ minStints, minPitTimeMinutes }: Strat
   })
 
   const minPitMs = Math.max(0, minPitTimeMinutes * 60000)
-  const raceRemainMs = Math.max(0, Number(raceRemainMinStr) || 0) * 60000
+  const raceDigitsClean = sanitizeDurationDigitInput(raceRemainDigitsStr)
+  const raceRemainParsedMs = parseCompactDurationMs(raceDigitsClean)
+  const raceRemainMs = raceRemainParsedMs !== null ? raceRemainParsedMs : 0
 
   const updateTeam = (key: TeamKey, patch: Partial<TeamForm>) => {
     setTeams((prev) => ({ ...prev, [key]: { ...prev[key], ...patch } }))
   }
 
   const addLapSample = (key: TeamKey) => {
-    const raw = teams[key].lapInputSec.trim().replace(/,/g, '.')
-    const sec = Number(raw)
-    if (!Number.isFinite(sec) || sec <= 0) return
-    const ms = sec * 1000
-    updateTeam(key, { lapSamplesMs: [...teams[key].lapSamplesMs, ms], lapInputSec: '' })
+    const d = sanitizeDurationDigitInput(teams[key].lapInputDigits)
+    const ms = parseCompactDurationMs(d)
+    if (ms === null) {
+      window.alert('请输入恰好 6 位或 7 位数字：6 位 = 1 位分 + 2 位秒 + 3 位毫秒（如 121343 → 1:21.343）；7 位 = 2 位分 + 2 位秒 + 3 位毫秒（如 1148911 → 11:48.911）。秒须在 0–59。')
+      return
+    }
+    updateTeam(key, { lapSamplesMs: [...teams[key].lapSamplesMs, ms], lapInputDigits: '' })
   }
 
   const removeLapSample = (key: TeamKey, index: number) => {
@@ -175,7 +175,6 @@ export default function StrategyAnalysis({ minStints, minPitTimeMinutes }: Strat
         laps: p.laps,
         lapGap,
         avgLapMs: avg,
-        avgLapSec: avg !== null ? avg / 1000 : null,
         pitCatchUpMs,
         pitCatchUpLaps,
         theoreticalFinalLaps,
@@ -223,30 +222,47 @@ export default function StrategyAnalysis({ minStints, minPitTimeMinutes }: Strat
 
   const aTheoreticalFinal = rows.find((x) => x.key === 'A')?.theoreticalFinalLaps ?? null
 
+  let raceRemainHint: string | null = null
+  if (raceDigitsClean.length === 0) {
+    raceRemainHint = null
+  } else if (raceRemainParsedMs !== null) {
+    raceRemainHint = `已解析为 ${formatMsAsMinSecMs(raceRemainParsedMs)}`
+  } else if (raceDigitsClean.length === 6 || raceDigitsClean.length === 7) {
+    raceRemainHint = '无效：秒须在 0–59，且须为有效 6/7 位格式'
+  } else {
+    raceRemainHint = '须恰好 6 位或 7 位数字'
+  }
+
   return (
     <div className="strategy-root">
       <section className="card strategy-input-card">
-        <h2>策略 · 数据分析</h2>
+        <h2>数据分析</h2>
+        <p className="hint">
+          <strong>时间输入（比赛剩余、圈速）</strong>：仅输入数字，<strong>6 位</strong> = 1 位分 + 2 位秒 + 3 位毫秒，例如 <code className="mono">121343</code> →{' '}
+          <span className="mono">1:21.343</span>；<strong>7 位</strong> = 2 位分 + 2 位秒 + 3 位毫秒，例如 <code className="mono">1148911</code> →{' '}
+          <span className="mono">11:48.911</span>。秒为 00–59。未满 6 位或格式无效时，比赛剩余时间按 0 处理；添加圈速须解析成功。
+        </p>
         <p className="hint">
           只有<strong>填写完整</strong>的队伍会出现在下方对比表：<strong>当前圈数</strong>、<strong>进站次数</strong>、<strong>至少一条圈速</strong>必填；队伍
           B/C/D 另需填写<strong>队名</strong>。须先完整填写<strong>本队 A</strong>，表格才会显示。排序为当前圈数从高到低。<strong>最少进站次数</strong>=
           max(0, 最低棒数 − 1)；<strong>剩余进站次数</strong>= max(0, 最少进站次数 − 已进站次数)；剩余进站用时 = 剩余进站次数 × 最小进站时长。
         </p>
         <p className="hint">
-          当前赛事最少进站次数（用于策略表）：<strong>{minRequiredPitStops(minStints)}</strong>（最低棒数 {minStints} − 1）
+          当前赛事最少进站次数（用于本页）：<strong>{minRequiredPitStops(minStints)}</strong>（最低棒数 {minStints} − 1）
         </p>
 
         <label className="strategy-field strategy-race-rem">
-          比赛剩余时间（分钟）
+          比赛剩余时间（6 或 7 位数字）
           <input
-            type="number"
-            min={0}
-            step={1}
-            placeholder="手动填写"
-            value={raceRemainMinStr}
-            onChange={(e) => setRaceRemainMinStr(e.target.value)}
+            type="text"
+            inputMode="numeric"
+            autoComplete="off"
+            placeholder="如 121343 或 1148911"
+            value={raceRemainDigitsStr}
+            onChange={(e) => setRaceRemainDigitsStr(sanitizeDurationDigitInput(e.target.value))}
           />
         </label>
+        {raceRemainHint ? <p className="hint strategy-race-rem-hint">{raceRemainHint}</p> : null}
 
         <div className="strategy-team-grid">
           {TEAM_KEYS.map((key) => (
@@ -279,14 +295,14 @@ export default function StrategyAnalysis({ minStints, minPitTimeMinutes }: Strat
               </label>
               <div className="strategy-lap-add">
                 <label className="strategy-lap-label">
-                  当前圈速（秒/圈，可多次添加）
+                  当前圈速（6 或 7 位数字，可多次添加）
                   <input
-                    type="number"
-                    min={0}
-                    step={0.001}
-                    placeholder="如 95.5"
-                    value={teams[key].lapInputSec}
-                    onChange={(e) => updateTeam(key, { lapInputSec: e.target.value })}
+                    type="text"
+                    inputMode="numeric"
+                    autoComplete="off"
+                    placeholder="如 121343"
+                    value={teams[key].lapInputDigits}
+                    onChange={(e) => updateTeam(key, { lapInputDigits: sanitizeDurationDigitInput(e.target.value) })}
                   />
                 </label>
                 <button type="button" className="btn-secondary strategy-add-lap-btn" onClick={() => addLapSample(key)}>
@@ -297,7 +313,7 @@ export default function StrategyAnalysis({ minStints, minPitTimeMinutes }: Strat
                 <ul className="strategy-lap-list">
                   {teams[key].lapSamplesMs.map((ms, i) => (
                     <li key={`${key}-lap-${i}`} className="strategy-lap-item">
-                      <span className="mono">{(ms / 1000).toFixed(3)} 秒</span>
+                      <span className="mono">{formatMsAsMinSecMs(ms)} /圈</span>
                       <button type="button" className="btn-text danger" onClick={() => removeLapSample(key, i)}>
                         删除
                       </button>
@@ -317,7 +333,7 @@ export default function StrategyAnalysis({ minStints, minPitTimeMinutes }: Strat
         <p className="hint">
           <strong>圈数差</strong>：当前圈数 − <strong>本队（A）当前圈数</strong>（可负）。<strong>进站追赶时间</strong>：（该队剩余进站次数 −
           本队剩余进站次数）× 最小进站时间（可为负，按负时间显示）。<strong>进站追赶圈数</strong>：进站追赶时间 ÷ 本队平均圈速（可负）。<strong>理论最终圈数</strong>：当前圈数
-          + max(0, 剩余赛时 − 该队剩余进站次数 × 最小进站时间) ÷ 该队平均圈速。<strong>追赶需均圈</strong>：本队行始终为「—」。本队理论最终圈<strong>低于</strong>对方时，在<strong>对方行</strong>显示本队为追平该队理论最终圈所需的均圈（秒/圈）；本队<strong>领先或持平</strong>于该队时，在<strong>对方行</strong>显示该队为追平本队理论最终圈所需的均圈（秒/圈）。
+          + max(0, 剩余赛时 − 该队剩余进站次数 × 最小进站时间) ÷ 该队平均圈速。<strong>追赶需均圈</strong>：本队行始终为「—」。本队理论最终圈<strong>低于</strong>对方时，在<strong>对方行</strong>显示本队为追平该队理论最终圈所需的均圈；本队<strong>领先或持平</strong>于该队时，在<strong>对方行</strong>显示该队为追平本队理论最终圈所需的均圈（显示为 M:SS.mmm /圈）。各列公式见项目根目录 <code className="mono">数据分析公式.txt</code>。
         </p>
         {gateMessage && <div className="strategy-warn">{gateMessage}</div>}
         {errors.length > 0 && (
@@ -366,9 +382,9 @@ export default function StrategyAnalysis({ minStints, minPitTimeMinutes }: Strat
                   r.key === 'A'
                     ? '—'
                     : behindOpponent && r.paceToCatchSec !== null && r.paceToCatchSec > 0
-                      ? formatSecPerLap(r.paceToCatchSec)
+                      ? formatPaceSecPerLap(r.paceToCatchSec)
                       : leadOrTieOpponent && r.paceOppCatchUsSec !== null && r.paceOppCatchUsSec > 0
-                        ? formatSecPerLap(r.paceOppCatchUsSec)
+                        ? formatPaceSecPerLap(r.paceOppCatchUsSec)
                         : '—'
                 return (
                   <tr key={r.key} className={r.key === 'A' ? 'strategy-row-own' : ''}>
@@ -376,7 +392,9 @@ export default function StrategyAnalysis({ minStints, minPitTimeMinutes }: Strat
                     <td>{r.name}</td>
                     <td className="mono">{r.laps}</td>
                     <td className="mono">{r.lapGap}</td>
-                    <td className="mono">{r.avgLapSec !== null ? `${r.avgLapSec.toFixed(3)} 秒` : '—'}</td>
+                    <td className="mono">
+                      {r.avgLapMs !== null ? `${formatMsAsMinSecMs(r.avgLapMs)} /圈` : '—'}
+                    </td>
                     <td className="mono">{formatDurationMs(r.pitCatchUpMs)}</td>
                     <td className="mono">
                       {r.pitCatchUpLaps !== null && Number.isFinite(r.pitCatchUpLaps)

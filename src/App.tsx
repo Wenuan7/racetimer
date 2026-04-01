@@ -1781,7 +1781,7 @@ export default function App() {
           车辆
         </button>
         <button type="button" className={tab === 'strategy' ? 'nav-item active' : 'nav-item'} onClick={() => setTab('strategy')}>
-          策略
+          分析
         </button>
         <button type="button" className={tab === 'config' ? 'nav-item active' : 'nav-item'} onClick={() => setTab('config')}>
           配置
