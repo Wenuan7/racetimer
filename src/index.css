@@ -395,19 +395,52 @@ button:disabled {
 }
 
 .strategy-field.strategy-race-rem {
-  margin: 12px 0;
+  margin: 8px 0 6px;
   display: grid;
-  gap: 6px;
-  font-weight: 700;
-  font-size: 14px;
+  grid-template-columns: auto minmax(0, 132px);
+  align-items: center;
+  column-gap: 10px;
+  row-gap: 4px;
+  font-weight: 600;
+  font-size: 11px;
+  color: #475569;
+}
+
+.strategy-race-rem-label-text {
+  white-space: nowrap;
+}
+
+.strategy-field.strategy-race-rem input {
+  width: 100%;
+  min-width: 0;
+  padding: 5px 7px;
+  font-size: 13px;
+  line-height: 1.25;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  background: #fff;
+  color: #0f172a;
+}
+
+.strategy-field.strategy-race-rem input:focus {
+  outline: none;
+  border-color: #2563eb;
+  box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.15);
+}
+
+.strategy-race-rem-hint {
+  margin: 0 0 6px;
+  font-size: 11px;
+  line-height: 1.35;
+  color: #64748b;
 }
 
 .strategy-team-grid {
   display: grid;
-  gap: 10px;
+  gap: 8px;
 }
 
-@media (min-width: 768px) {
+@media (min-width: 520px) {
   .strategy-team-grid {
     grid-template-columns: 1fr 1fr;
   }
@@ -415,11 +448,11 @@ button:disabled {
 
 .strategy-team-box {
   border: 1px solid #e2e8f0;
-  border-radius: 10px;
-  padding: 10px;
+  border-radius: 8px;
+  padding: 8px;
   background: #fafbfc;
   display: grid;
-  gap: 8px;
+  gap: 6px;
 }
 
 .strategy-team-box.strategy-team-own {
@@ -429,11 +462,12 @@ button:disabled {
 
 .strategy-team-head {
   font-weight: 900;
-  font-size: 14px;
+  font-size: 12px;
   color: #0f172a;
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
+  flex-wrap: wrap;
 }
 
 .strategy-own-badge {
@@ -445,24 +479,50 @@ button:disabled {
   border-radius: 999px;
 }
 
-.strategy-team-box label {
-  margin: 0;
+.strategy-team-fields {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px 8px;
+  align-items: end;
 }
 
-.strategy-lap-add {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
+.strategy-field-cell {
+  display: grid;
+  gap: 2px;
+  margin: 0;
+  font-size: 11px;
+  font-weight: 600;
+  color: #475569;
+  min-width: 0;
 }
 
-.strategy-lap-label {
-  margin: 0;
+.strategy-field-cell input {
+  width: 100%;
+  min-width: 0;
+  padding: 5px 7px;
+  font-size: 13px;
+  line-height: 1.25;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  background: #fff;
+  color: #0f172a;
+}
+
+.strategy-field-cell input:focus {
+  outline: none;
+  border-color: #2563eb;
+  box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.15);
+}
+
+.strategy-lap-actions {
+  grid-column: 1 / -1;
 }
 
 .strategy-add-lap-btn {
   width: 100%;
-  padding: 10px 12px;
-  font-size: 14px;
+  padding: 6px 8px;
+  font-size: 12px;
+  font-weight: 700;
 }
 
 .strategy-lap-list {
@@ -477,16 +537,17 @@ button:disabled {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
-  padding: 4px 8px;
+  gap: 6px;
+  padding: 3px 6px;
   background: #fff;
   border: 1px solid #e2e8f0;
-  border-radius: 8px;
-  font-size: 13px;
+  border-radius: 6px;
+  font-size: 12px;
 }
 
 .strategy-lap-empty {
   margin: 0;
+  font-size: 12px;
 }
 
 .strategy-warn {

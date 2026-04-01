@@ -238,18 +238,18 @@ export default function StrategyAnalysis({ minStints, minPitTimeMinutes }: Strat
       <section className="card strategy-input-card">
         <h2>数据分析</h2>
 
-        <label className="strategy-field strategy-race-rem">
-          比赛剩余时间（6 或 7 位数字）
+        <label className="strategy-field strategy-race-rem" title="比赛剩余时间，6 或 7 位数字">
+          <span className="strategy-race-rem-label-text">剩余赛时</span>
           <input
             type="text"
             inputMode="numeric"
             autoComplete="off"
-            placeholder="如 121343 或 1148911"
+            placeholder="121343"
             value={raceRemainDigitsStr}
             onChange={(e) => setRaceRemainDigitsStr(sanitizeDurationDigitInput(e.target.value))}
           />
         </label>
-        {raceRemainHint ? <p className="hint strategy-race-rem-hint">{raceRemainHint}</p> : null}
+        {raceRemainHint ? <p className="strategy-race-rem-hint">{raceRemainHint}</p> : null}
 
         <div className="strategy-team-grid">
           {TEAM_KEYS.map((key) => (
@@ -258,43 +258,45 @@ export default function StrategyAnalysis({ minStints, minPitTimeMinutes }: Strat
                 队伍 {key}
                 {key === 'A' && <span className="strategy-own-badge">默认本队</span>}
               </div>
-              <label>
-                队名
-                <input value={teams[key].name} onChange={(e) => updateTeam(key, { name: e.target.value })} placeholder={key === 'A' ? '本队' : ''} />
-              </label>
-              <label>
-                当前圈数
-                <input
-                  type="number"
-                  min={0}
-                  value={teams[key].lapsStr}
-                  onChange={(e) => updateTeam(key, { lapsStr: e.target.value })}
-                />
-              </label>
-              <label>
-                进站次数（已完成）
-                <input
-                  type="number"
-                  min={0}
-                  value={teams[key].pitStr}
-                  onChange={(e) => updateTeam(key, { pitStr: e.target.value })}
-                />
-              </label>
-              <div className="strategy-lap-add">
-                <label className="strategy-lap-label">
-                  当前圈速（6 或 7 位数字，可多次添加）
+              <div className="strategy-team-fields">
+                <label className="strategy-field-cell">
+                  队名
+                  <input value={teams[key].name} onChange={(e) => updateTeam(key, { name: e.target.value })} placeholder={key === 'A' ? '本队' : ''} />
+                </label>
+                <label className="strategy-field-cell">
+                  当前圈数
+                  <input
+                    type="number"
+                    min={0}
+                    value={teams[key].lapsStr}
+                    onChange={(e) => updateTeam(key, { lapsStr: e.target.value })}
+                  />
+                </label>
+                <label className="strategy-field-cell" title="进站次数（已完成）">
+                  进站次数
+                  <input
+                    type="number"
+                    min={0}
+                    value={teams[key].pitStr}
+                    onChange={(e) => updateTeam(key, { pitStr: e.target.value })}
+                  />
+                </label>
+                <label className="strategy-field-cell" title="6 或 7 位数字，可多次添加">
+                  圈速
                   <input
                     type="text"
                     inputMode="numeric"
                     autoComplete="off"
-                    placeholder="如 121343"
+                    placeholder="121343"
                     value={teams[key].lapInputDigits}
                     onChange={(e) => updateTeam(key, { lapInputDigits: sanitizeDurationDigitInput(e.target.value) })}
                   />
                 </label>
-                <button type="button" className="btn-secondary strategy-add-lap-btn" onClick={() => addLapSample(key)}>
-                  添加圈速
-                </button>
+                <div className="strategy-lap-actions">
+                  <button type="button" className="btn-secondary strategy-add-lap-btn" onClick={() => addLapSample(key)}>
+                    添加圈速
+                  </button>
+                </div>
               </div>
               {teams[key].lapSamplesMs.length > 0 ? (
                 <ul className="strategy-lap-list">
