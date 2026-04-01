@@ -386,24 +386,36 @@ button:disabled {
 
 .strategy-root {
   display: grid;
-  gap: 12px;
+  gap: 8px;
+}
+
+.strategy-input-card.card,
+.strategy-result-card.card {
+  padding: 6px 8px;
+  margin-bottom: 8px;
+  border-radius: 8px;
+  box-shadow: 0 3px 10px rgba(15, 23, 42, 0.05);
 }
 
 .strategy-input-card h2,
 .strategy-result-card h3 {
-  margin: 0 0 8px;
+  margin: 0 0 6px;
+  font-size: 15px;
+  font-weight: 800;
 }
 
 .strategy-field.strategy-race-rem {
-  margin: 8px 0 6px;
+  margin: 4px 0 4px;
   display: grid;
-  grid-template-columns: auto minmax(0, 132px);
+  grid-template-columns: auto max-content;
   align-items: center;
-  column-gap: 10px;
-  row-gap: 4px;
+  column-gap: 8px;
+  row-gap: 2px;
   font-weight: 600;
-  font-size: 11px;
+  font-size: 10px;
   color: #475569;
+  width: fit-content;
+  max-width: 100%;
 }
 
 .strategy-race-rem-label-text {
@@ -411,13 +423,15 @@ button:disabled {
 }
 
 .strategy-field.strategy-race-rem input {
-  width: 100%;
+  box-sizing: border-box;
+  width: 9ch;
+  max-width: 9ch;
   min-width: 0;
-  padding: 5px 7px;
-  font-size: 13px;
-  line-height: 1.25;
+  padding: 1px 2px;
+  font-size: 10px;
+  line-height: 1.2;
   border: 1px solid #cbd5e1;
-  border-radius: 6px;
+  border-radius: 3px;
   background: #fff;
   color: #0f172a;
 }
@@ -425,34 +439,42 @@ button:disabled {
 .strategy-field.strategy-race-rem input:focus {
   outline: none;
   border-color: #2563eb;
-  box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.15);
+  box-shadow: 0 0 0 1px rgba(37, 99, 235, 0.25);
 }
 
 .strategy-race-rem-hint {
-  margin: 0 0 6px;
-  font-size: 11px;
+  margin: 2px 0 4px;
+  font-size: 10px;
   line-height: 1.35;
   color: #64748b;
 }
 
 .strategy-team-grid {
   display: grid;
-  gap: 8px;
+  grid-template-columns: max-content;
+  gap: 6px;
+  justify-items: start;
+  align-content: start;
 }
 
 @media (min-width: 520px) {
   .strategy-team-grid {
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: repeat(2, max-content);
+    column-gap: 8px;
+    row-gap: 6px;
   }
 }
 
 .strategy-team-box {
+  box-sizing: border-box;
+  width: fit-content;
+  max-width: 100%;
   border: 1px solid #e2e8f0;
-  border-radius: 5px;
-  padding: 4px 5px;
+  border-radius: 4px;
+  padding: 3px 4px;
   background: #fafbfc;
   display: grid;
-  gap: 4px;
+  gap: 3px;
 }
 
 .strategy-team-box.strategy-team-own {
@@ -481,10 +503,11 @@ button:disabled {
 
 .strategy-team-fields {
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 3px 5px;
+  grid-template-columns: repeat(2, max-content);
+  gap: 3px 4px;
   align-items: end;
   justify-items: start;
+  width: fit-content;
 }
 
 .strategy-field-cell {
@@ -499,9 +522,9 @@ button:disabled {
 
 .strategy-field-cell input {
   box-sizing: border-box;
-  width: 7ch;
+  width: 9ch;
   min-width: 0;
-  max-width: 7ch;
+  max-width: 9ch;
   padding: 1px 2px;
   font-size: 10px;
   line-height: 1.2;
@@ -512,8 +535,8 @@ button:disabled {
 }
 
 .strategy-field-cell--name input {
-  width: 10ch;
-  max-width: 10ch;
+  width: 13ch;
+  max-width: 13ch;
 }
 
 .strategy-field-cell input:focus {
