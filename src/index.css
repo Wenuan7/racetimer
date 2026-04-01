@@ -448,11 +448,11 @@ button:disabled {
 
 .strategy-team-box {
   border: 1px solid #e2e8f0;
-  border-radius: 8px;
-  padding: 8px;
+  border-radius: 5px;
+  padding: 4px 5px;
   background: #fafbfc;
   display: grid;
-  gap: 6px;
+  gap: 4px;
 }
 
 .strategy-team-box.strategy-team-own {
@@ -462,67 +462,90 @@ button:disabled {
 
 .strategy-team-head {
   font-weight: 900;
-  font-size: 12px;
+  font-size: 10px;
   color: #0f172a;
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 4px;
   flex-wrap: wrap;
 }
 
 .strategy-own-badge {
-  font-size: 11px;
+  font-size: 8px;
   font-weight: 800;
   color: #1d4ed8;
   background: #dbeafe;
-  padding: 2px 8px;
+  padding: 1px 4px;
   border-radius: 999px;
 }
 
 .strategy-team-fields {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 6px 8px;
+  gap: 3px 5px;
   align-items: end;
+  justify-items: start;
 }
 
 .strategy-field-cell {
   display: grid;
-  gap: 2px;
+  gap: 1px;
   margin: 0;
-  font-size: 11px;
+  font-size: 9px;
   font-weight: 600;
   color: #475569;
   min-width: 0;
 }
 
 .strategy-field-cell input {
-  width: 100%;
+  box-sizing: border-box;
+  width: 7ch;
   min-width: 0;
-  padding: 5px 7px;
-  font-size: 13px;
-  line-height: 1.25;
+  max-width: 7ch;
+  padding: 1px 2px;
+  font-size: 10px;
+  line-height: 1.2;
   border: 1px solid #cbd5e1;
-  border-radius: 6px;
+  border-radius: 3px;
   background: #fff;
   color: #0f172a;
+}
+
+.strategy-field-cell--name input {
+  width: 10ch;
+  max-width: 10ch;
 }
 
 .strategy-field-cell input:focus {
   outline: none;
   border-color: #2563eb;
-  box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.15);
+  box-shadow: 0 0 0 1px rgba(37, 99, 235, 0.25);
+}
+
+.strategy-field-cell input[type='number'] {
+  appearance: textfield;
+  -moz-appearance: textfield;
+}
+
+.strategy-field-cell input[type='number']::-webkit-outer-spin-button,
+.strategy-field-cell input[type='number']::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
 }
 
 .strategy-lap-actions {
   grid-column: 1 / -1;
+  justify-self: start;
 }
 
-.strategy-add-lap-btn {
-  width: 100%;
-  padding: 6px 8px;
-  font-size: 12px;
+.strategy-add-lap-btn.btn-secondary {
+  width: auto;
+  margin: 0;
+  padding: 2px 6px;
+  font-size: 9px;
   font-weight: 700;
+  line-height: 1.2;
+  border-radius: 3px;
 }
 
 .strategy-lap-list {
@@ -530,24 +553,30 @@ button:disabled {
   margin: 0;
   padding: 0;
   display: grid;
-  gap: 4px;
+  gap: 2px;
 }
 
 .strategy-lap-item {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 6px;
-  padding: 3px 6px;
+  gap: 4px;
+  padding: 2px 4px;
   background: #fff;
   border: 1px solid #e2e8f0;
-  border-radius: 6px;
-  font-size: 12px;
+  border-radius: 3px;
+  font-size: 10px;
+}
+
+.strategy-lap-item .btn-text {
+  padding: 1px 4px;
+  font-size: 9px;
+  border-radius: 3px;
 }
 
 .strategy-lap-empty {
   margin: 0;
-  font-size: 12px;
+  font-size: 9px;
 }
 
 .strategy-warn {

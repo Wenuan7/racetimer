@@ -259,7 +259,7 @@ export default function StrategyAnalysis({ minStints, minPitTimeMinutes }: Strat
                 {key === 'A' && <span className="strategy-own-badge">默认本队</span>}
               </div>
               <div className="strategy-team-fields">
-                <label className="strategy-field-cell">
+                <label className="strategy-field-cell strategy-field-cell--name">
                   队名
                   <input value={teams[key].name} onChange={(e) => updateTeam(key, { name: e.target.value })} placeholder={key === 'A' ? '本队' : ''} />
                 </label>
@@ -310,7 +310,7 @@ export default function StrategyAnalysis({ minStints, minPitTimeMinutes }: Strat
                   ))}
                 </ul>
               ) : (
-                <p className="hint strategy-lap-empty">暂无圈速样本</p>
+                <p className="strategy-lap-empty">暂无圈速样本</p>
               )}
             </div>
           ))}
