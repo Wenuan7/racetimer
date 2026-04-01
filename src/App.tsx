@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useReducer, useState } from 'react'
+import StrategyAnalysis from './StrategyAnalysis'
 
 // 车手信息：仅用于管理字段；计时统计从 stints 推导
 type Driver = {
@@ -1462,11 +1463,7 @@ export default function App() {
             <header className="manage-brand">
               <h1 className="brand-title">TFG RaceTimer</h1>
             </header>
-            <section className="card">
-              <div className="section-gap" />
-              <h2>策略</h2>
-              <p className="hint">SIno开发ing</p>
-            </section>
+            <StrategyAnalysis minStints={selectedEvent.minStints} minPitTimeMinutes={selectedEvent.minPitTimeMinutes} />
           </>
         )}
 
@@ -1710,22 +1707,38 @@ export default function App() {
                   const isHigh = totalMin > selectedEvent.maxDriveTimeMinutes
                   const hint = isLow ? '低于最少驾驶时间' : isHigh ? '超过最大驾驶时间' : '正常'
 
+                  const maxDrivingHint =
+                    gapToMaxMs > 0
+                      ? `还差 ${formatDurationMs(gapToMaxMs)}`
+                      : gapToMaxMs === 0
+                        ? '已达上限'
+                        : `已超 ${formatDurationMs(-gapToMaxMs)}`
+
                   return (
                     <article key={d.id} className="stat-item">
-                      <p>{d.name}</p>
-                      <p className="mono">总驾驶时间: {formatDurationMs(driverTotalMs)}</p>
-                      <p className="mono">
-                        距个人最少驾驶还差：{gapToMinMs > 0 ? formatDurationMs(gapToMinMs) : '已满足'}
-                      </p>
-                      <p className="mono">
-                        {gapToMaxMs > 0
-                          ? `距个人最多驾驶还差：${formatDurationMs(gapToMaxMs)}`
-                          : gapToMaxMs === 0
-                            ? '距个人最多驾驶：已达上限'
-                            : `已超过个人最多驾驶：${formatDurationMs(-gapToMaxMs)}`}
-                      </p>
-                      <p>已跑棒数: {stat.stintCount}</p>
-                      <p className={isLow || isHigh ? 'warn' : 'ok'}>{hint}</p>
+                      <h3 className="stat-item-name">{d.name}</h3>
+                      <div className="stat-item-rows">
+                        <div className="stat-item-row">
+                          <span className="stat-item-label">总驾驶时间</span>
+                          <span className="stat-item-value mono">{formatDurationMs(driverTotalMs)}</span>
+                        </div>
+                        <div className="stat-item-row">
+                          <span className="stat-item-label">距个人最少驾驶</span>
+                          <span className="stat-item-value mono">{gapToMinMs > 0 ? `还差 ${formatDurationMs(gapToMinMs)}` : '已满足'}</span>
+                        </div>
+                        <div className="stat-item-row">
+                          <span className="stat-item-label">距个人最多驾驶</span>
+                          <span className="stat-item-value mono">{maxDrivingHint}</span>
+                        </div>
+                        <div className="stat-item-row">
+                          <span className="stat-item-label">已跑棒数</span>
+                          <span className="stat-item-value mono">{stat.stintCount}</span>
+                        </div>
+                        <div className="stat-item-row">
+                          <span className="stat-item-label">状态</span>
+                          <span className={`stat-item-value ${isLow || isHigh ? 'warn' : 'ok'}`}>{hint}</span>
+                        </div>
+                      </div>
                       <div className="stint-list">
                         {stat.stints.length === 0 ? (
                           <p className="hint">暂无棒次记录</p>

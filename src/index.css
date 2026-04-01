@@ -384,6 +384,158 @@ button:disabled {
   margin-bottom: 10px;
 }
 
+.strategy-root {
+  display: grid;
+  gap: 12px;
+}
+
+.strategy-input-card h2,
+.strategy-result-card h3 {
+  margin: 0 0 8px;
+}
+
+.strategy-field.strategy-race-rem {
+  margin: 12px 0;
+  display: grid;
+  gap: 6px;
+  font-weight: 700;
+  font-size: 14px;
+}
+
+.strategy-team-grid {
+  display: grid;
+  gap: 10px;
+}
+
+@media (min-width: 768px) {
+  .strategy-team-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+.strategy-team-box {
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  padding: 10px;
+  background: #fafbfc;
+  display: grid;
+  gap: 8px;
+}
+
+.strategy-team-box.strategy-team-own {
+  border-color: rgba(37, 99, 235, 0.45);
+  background: #f8fbff;
+}
+
+.strategy-team-head {
+  font-weight: 900;
+  font-size: 14px;
+  color: #0f172a;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.strategy-own-badge {
+  font-size: 11px;
+  font-weight: 800;
+  color: #1d4ed8;
+  background: #dbeafe;
+  padding: 2px 8px;
+  border-radius: 999px;
+}
+
+.strategy-team-box label {
+  margin: 0;
+}
+
+.strategy-lap-add {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.strategy-lap-label {
+  margin: 0;
+}
+
+.strategy-add-lap-btn {
+  width: 100%;
+  padding: 10px 12px;
+  font-size: 14px;
+}
+
+.strategy-lap-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.strategy-lap-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 4px 8px;
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  font-size: 13px;
+}
+
+.strategy-lap-empty {
+  margin: 0;
+}
+
+.strategy-warn {
+  margin: 8px 0;
+  padding: 10px;
+  border-radius: 10px;
+  background: #fff7ed;
+  border: 1px solid #fed7aa;
+  color: #9a3412;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.strategy-table-wrap {
+  overflow-x: auto;
+  margin-top: 10px;
+  -webkit-overflow-scrolling: touch;
+}
+
+.strategy-table {
+  width: 100%;
+  min-width: 760px;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.strategy-table th,
+.strategy-table td {
+  border: 1px solid #e2e8f0;
+  padding: 8px 10px;
+  text-align: left;
+  vertical-align: top;
+}
+
+.strategy-table th {
+  background: #f1f5f9;
+  font-weight: 800;
+  color: #0f172a;
+  white-space: nowrap;
+}
+
+.strategy-table tbody tr:nth-child(even) {
+  background: #fafbfc;
+}
+
+.strategy-row-own {
+  background: #eff6ff !important;
+}
+
 .vehicle-block {
   margin-top: 14px;
   border: 1px solid #dbe3ec;
@@ -630,6 +782,52 @@ button:disabled {
   border-radius: 10px;
   padding: 10px;
   background: #fbfdff;
+}
+
+.stat-item-name {
+  margin: 0 0 8px;
+  font-size: 16px;
+  font-weight: 900;
+  color: #0f172a;
+  letter-spacing: -0.02em;
+}
+
+.stat-item-rows {
+  display: grid;
+  gap: 0;
+}
+
+.stat-item-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 6px 0;
+  border-bottom: 1px solid #e8edf2;
+}
+
+.stat-item-row:last-child {
+  border-bottom: none;
+}
+
+.stat-item-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: #64748b;
+  flex-shrink: 0;
+}
+
+.stat-item-value {
+  font-size: 13px;
+  font-weight: 700;
+  color: #0f172a;
+  text-align: right;
+  min-width: 0;
+  word-break: break-word;
+}
+
+.stat-item-value.mono {
+  font-family: ui-monospace, Consolas, monospace;
 }
 
 .stat-item p {
