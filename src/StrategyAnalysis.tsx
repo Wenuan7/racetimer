@@ -237,19 +237,6 @@ export default function StrategyAnalysis({ minStints, minPitTimeMinutes }: Strat
     <div className="strategy-root">
       <section className="card strategy-input-card">
         <h2>数据分析</h2>
-        <p className="hint">
-          <strong>时间输入（比赛剩余、圈速）</strong>：仅输入数字，<strong>6 位</strong> = 1 位分 + 2 位秒 + 3 位毫秒，例如 <code className="mono">121343</code> →{' '}
-          <span className="mono">1:21.343</span>；<strong>7 位</strong> = 2 位分 + 2 位秒 + 3 位毫秒，例如 <code className="mono">1148911</code> →{' '}
-          <span className="mono">11:48.911</span>。秒为 00–59。未满 6 位或格式无效时，比赛剩余时间按 0 处理；添加圈速须解析成功。
-        </p>
-        <p className="hint">
-          只有<strong>填写完整</strong>的队伍会出现在下方对比表：<strong>当前圈数</strong>、<strong>进站次数</strong>、<strong>至少一条圈速</strong>必填；队伍
-          B/C/D 另需填写<strong>队名</strong>。须先完整填写<strong>本队 A</strong>，表格才会显示。排序为当前圈数从高到低。<strong>最少进站次数</strong>=
-          max(0, 最低棒数 − 1)；<strong>剩余进站次数</strong>= max(0, 最少进站次数 − 已进站次数)；剩余进站用时 = 剩余进站次数 × 最小进站时长。
-        </p>
-        <p className="hint">
-          当前赛事最少进站次数（用于本页）：<strong>{minRequiredPitStops(minStints)}</strong>（最低棒数 {minStints} − 1）
-        </p>
 
         <label className="strategy-field strategy-race-rem">
           比赛剩余时间（6 或 7 位数字）
@@ -330,11 +317,6 @@ export default function StrategyAnalysis({ minStints, minPitTimeMinutes }: Strat
 
       <section className="card strategy-result-card">
         <h3>对比结果</h3>
-        <p className="hint">
-          <strong>圈数差</strong>：当前圈数 − <strong>本队（A）当前圈数</strong>（可负）。<strong>进站追赶时间</strong>：（该队剩余进站次数 −
-          本队剩余进站次数）× 最小进站时间（可为负，按负时间显示）。<strong>进站追赶圈数</strong>：进站追赶时间 ÷ 本队平均圈速（可负）。<strong>理论最终圈数</strong>：当前圈数
-          + max(0, 剩余赛时 − 该队剩余进站次数 × 最小进站时间) ÷ 该队平均圈速。<strong>追赶需均圈</strong>：本队行始终为「—」。本队理论最终圈<strong>低于</strong>对方时，在<strong>对方行</strong>显示本队为追平该队理论最终圈所需的均圈；本队<strong>领先或持平</strong>于该队时，在<strong>对方行</strong>显示该队为追平本队理论最终圈所需的均圈（显示为 M:SS.mmm /圈）。各列公式见项目根目录 <code className="mono">数据分析公式.txt</code>。
-        </p>
         {gateMessage && <div className="strategy-warn">{gateMessage}</div>}
         {errors.length > 0 && (
           <div className="strategy-warn">

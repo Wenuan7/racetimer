@@ -1044,3 +1044,62 @@ button:disabled {
   color: #0f172a;
   white-space: nowrap;
 }
+
+.login-gate-shell {
+  justify-content: center;
+  align-items: center;
+  padding: 24px 16px;
+}
+
+.login-gate-card {
+  width: 100%;
+  max-width: 360px;
+  padding: 24px 20px 20px;
+}
+
+.login-gate-brand {
+  margin-bottom: 20px;
+}
+
+.login-gate-form {
+  display: grid;
+  gap: 14px;
+}
+
+.login-gate-label {
+  display: grid;
+  gap: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  color: #334155;
+}
+
+.login-gate-input {
+  width: 100%;
+  padding: 12px 14px;
+  font-size: 16px;
+  border: 1px solid #cbd5e1;
+  border-radius: 10px;
+  background: #fff;
+  color: #0f172a;
+}
+
+.login-gate-input:focus {
+  outline: none;
+  border-color: #2563eb;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.2);
+}
+
+.login-gate-error {
+  margin: -4px 0 0;
+  font-size: 13px;
+  color: #b91c1c;
+}
+
+.login-gate-submit {
+  width: 100%;
+  margin-top: 4px;
+  padding: 14px;
+  font-size: 16px;
+  font-weight: 700;
+}

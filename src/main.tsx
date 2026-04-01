@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client'
 import './index.css'
 import App from './App.tsx'
 import { ErrorBoundary } from './ErrorBoundary.tsx'
+import LoginGate from './LoginGate.tsx'
 
 const el = document.getElementById('root')
 if (!el) {
@@ -12,7 +13,9 @@ if (!el) {
 createRoot(el).render(
   <StrictMode>
     <ErrorBoundary>
-      <App />
+      <LoginGate>
+        <App />
+      </LoginGate>
     </ErrorBoundary>
   </StrictMode>,
 )
