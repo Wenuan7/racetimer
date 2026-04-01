@@ -1718,25 +1718,34 @@ export default function App() {
                     <article key={d.id} className="stat-item">
                       <h3 className="stat-item-name">{d.name}</h3>
                       <div className="stat-item-rows">
-                        <div className="stat-item-row">
-                          <span className="stat-item-label">总驾驶时间</span>
-                          <span className="stat-item-value mono">{formatDurationMs(driverTotalMs)}</span>
+                        <div className="stat-item-row-double">
+                          <div className="stat-item-pair stat-item-pair-left">
+                            <span className="stat-item-label">总驾驶时间</span>
+                            <span className="stat-item-value mono">{formatDurationMs(driverTotalMs)}</span>
+                          </div>
+                          <div className="stat-item-pair stat-item-pair-right">
+                            <span className="stat-item-label">距个人最少驾驶</span>
+                            <span className="stat-item-value mono">
+                              {gapToMinMs > 0 ? `还差 ${formatDurationMs(gapToMinMs)}` : '已满足'}
+                            </span>
+                          </div>
                         </div>
-                        <div className="stat-item-row">
-                          <span className="stat-item-label">距个人最少驾驶</span>
-                          <span className="stat-item-value mono">{gapToMinMs > 0 ? `还差 ${formatDurationMs(gapToMinMs)}` : '已满足'}</span>
+                        <div className="stat-item-row-double">
+                          <div className="stat-item-pair stat-item-pair-left">
+                            <span className="stat-item-label">距个人最多驾驶</span>
+                            <span className="stat-item-value mono">{maxDrivingHint}</span>
+                          </div>
+                          <div className="stat-item-pair stat-item-pair-right">
+                            <span className="stat-item-label">已跑棒数</span>
+                            <span className="stat-item-value mono">{stat.stintCount}</span>
+                          </div>
                         </div>
-                        <div className="stat-item-row">
-                          <span className="stat-item-label">距个人最多驾驶</span>
-                          <span className="stat-item-value mono">{maxDrivingHint}</span>
-                        </div>
-                        <div className="stat-item-row">
-                          <span className="stat-item-label">已跑棒数</span>
-                          <span className="stat-item-value mono">{stat.stintCount}</span>
-                        </div>
-                        <div className="stat-item-row">
-                          <span className="stat-item-label">状态</span>
-                          <span className={`stat-item-value ${isLow || isHigh ? 'warn' : 'ok'}`}>{hint}</span>
+                        <div className="stat-item-row-double">
+                          <div className="stat-item-pair stat-item-pair-left">
+                            <span className="stat-item-label">状态</span>
+                            <span className={`stat-item-value ${isLow || isHigh ? 'warn' : 'ok'}`}>{hint}</span>
+                          </div>
+                          <div className="stat-item-pair stat-item-pair-right stat-item-pair-empty" aria-hidden />
                         </div>
                       </div>
                       <div className="stint-list">

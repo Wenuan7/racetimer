@@ -797,17 +797,46 @@ button:disabled {
   gap: 0;
 }
 
-.stat-item-row {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 16px;
-  padding: 6px 0;
+.stat-item-row-double {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px 20px;
+  padding: 8px 0;
   border-bottom: 1px solid #e8edf2;
+  align-items: baseline;
 }
 
-.stat-item-row:last-child {
+.stat-item-row-double:last-child {
   border-bottom: none;
+}
+
+.stat-item-pair {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px 8px;
+  min-width: 0;
+}
+
+.stat-item-pair-left {
+  justify-self: start;
+  justify-content: flex-start;
+}
+
+.stat-item-pair-right {
+  justify-self: end;
+  justify-content: flex-end;
+  text-align: right;
+}
+
+.stat-item-pair-right .stat-item-label,
+.stat-item-pair-right .stat-item-value {
+  text-align: right;
+}
+
+.stat-item-pair-empty {
+  visibility: hidden;
+  min-height: 1em;
 }
 
 .stat-item-label {
@@ -821,9 +850,12 @@ button:disabled {
   font-size: 13px;
   font-weight: 700;
   color: #0f172a;
-  text-align: right;
   min-width: 0;
   word-break: break-word;
+}
+
+.stat-item-pair-left .stat-item-value {
+  text-align: left;
 }
 
 .stat-item-value.mono {

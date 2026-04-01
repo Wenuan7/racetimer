@@ -79,7 +79,10 @@ type RowMetrics = {
   pitCatchUpMs: number
   pitCatchUpLaps: number | null
   theoreticalFinalLaps: number | null
+  /** 本队落后该对手时：本队为追平对方理论最终圈所需的均圈（秒/圈） */
   paceToCatchSec: number | null
+  /** 本队领先或持平该对手时：对方为追平本队理论最终圈所需的均圈（秒/圈） */
+  paceOppCatchUsSec: number | null
 }
 
 export default function StrategyAnalysis({ minStints, minPitTimeMinutes }: StrategyAnalysisProps) {
@@ -177,11 +180,12 @@ export default function StrategyAnalysis({ minStints, minPitTimeMinutes }: Strat
         pitCatchUpLaps,
         theoreticalFinalLaps,
         paceToCatchSec: null,
+        paceOppCatchUsSec: null,
       }
     })
 
     const driveA = Math.max(0, raceRemainMs - remA * minPitMs)
-    let bestPaceMs: number | null = null
+    const finalA = rowList.find((r) => r.key === 'A')!.theoreticalFinalLaps
 
     for (const p of parsed) {
       if (p.key === 'A') continue
@@ -198,20 +202,26 @@ export default function StrategyAnalysis({ minStints, minPitTimeMinutes }: Strat
         if (Number.isFinite(tReq) && tReq > 0) tReqMs = tReq
       }
 
+      let oppCatchUsMs: number | null = null
+      if (finalA !== null && Number.isFinite(finalA)) {
+        const gapCatch = finalA - p.laps
+        if (gapCatch > 1e-9 && driveO > 0) {
+          const tOpp = driveO / gapCatch
+          if (Number.isFinite(tOpp) && tOpp > 0) oppCatchUsMs = tOpp
+        }
+      }
+
       const row = rowList.find((r) => r.key === p.key)!
       row.paceToCatchSec = tReqMs !== null ? tReqMs / 1000 : null
-      if (tReqMs !== null) {
-        bestPaceMs = bestPaceMs === null ? tReqMs : Math.min(bestPaceMs, tReqMs)
-      }
+      row.paceOppCatchUsSec = oppCatchUsMs !== null ? oppCatchUsMs / 1000 : null
     }
-
-    const aRow = rowList.find((r) => r.key === 'A')!
-    aRow.paceToCatchSec = bestPaceMs !== null ? bestPaceMs / 1000 : null
 
     rowList.sort((a, b) => b.laps - a.laps)
 
     return { rows: rowList, errors: errs, gateMessage: null as string | null }
   }, [teams, raceRemainMs, minStints, minPitMs])
+
+  const aTheoreticalFinal = rows.find((x) => x.key === 'A')?.theoreticalFinalLaps ?? null
 
   return (
     <div className="strategy-root">
@@ -307,8 +317,7 @@ export default function StrategyAnalysis({ minStints, minPitTimeMinutes }: Strat
         <p className="hint">
           <strong>圈数差</strong>：当前圈数 − <strong>本队（A）当前圈数</strong>（可负）。<strong>进站追赶时间</strong>：（该队剩余进站次数 −
           本队剩余进站次数）× 最小进站时间（可为负，按负时间显示）。<strong>进站追赶圈数</strong>：进站追赶时间 ÷ 本队平均圈速（可负）。<strong>理论最终圈数</strong>：当前圈数
-          + max(0, 剩余赛时 − 该队剩余进站次数 × 最小进站时间) ÷ 该队平均圈速。<strong>追赶需均圈</strong>：假设<strong>该队</strong>以其实测<strong>平均单圈</strong>
-          跑满剩余有效赛时，<strong>本队</strong>为追平该队理论最终圈数所需的平均圈速（秒/圈）；B/C/D 各行对应该队；A 行取对各对手结果中<strong>最紧</strong>（需时最短）的一个。
+          + max(0, 剩余赛时 − 该队剩余进站次数 × 最小进站时间) ÷ 该队平均圈速。<strong>追赶需均圈</strong>：本队行始终为「—」。本队理论最终圈<strong>低于</strong>对方时，在<strong>对方行</strong>显示本队为追平该队理论最终圈所需的均圈（秒/圈）；本队<strong>领先或持平</strong>于该队时，在<strong>对方行</strong>显示该队为追平本队理论最终圈所需的均圈（秒/圈）。
         </p>
         {gateMessage && <div className="strategy-warn">{gateMessage}</div>}
         {errors.length > 0 && (
@@ -342,25 +351,43 @@ export default function StrategyAnalysis({ minStints, minPitTimeMinutes }: Strat
                   </td>
                 </tr>
               ) : null}
-              {rows.map((r) => (
-                <tr key={r.key} className={r.key === 'A' ? 'strategy-row-own' : ''}>
-                  <td>{r.key}</td>
-                  <td>{r.name}</td>
-                  <td className="mono">{r.laps}</td>
-                  <td className="mono">{r.lapGap}</td>
-                  <td className="mono">{r.avgLapSec !== null ? `${r.avgLapSec.toFixed(3)} 秒` : '—'}</td>
-                  <td className="mono">{formatDurationMs(r.pitCatchUpMs)}</td>
-                  <td className="mono">
-                    {r.pitCatchUpLaps !== null && Number.isFinite(r.pitCatchUpLaps)
-                      ? (Math.round(r.pitCatchUpLaps * 1000) / 1000).toFixed(3)
-                      : '—'}
-                  </td>
-                  <td className="mono">{r.theoreticalFinalLaps !== null ? (Math.round(r.theoreticalFinalLaps * 1000) / 1000).toFixed(3) : '—'}</td>
-                  <td className="mono">
-                    {r.paceToCatchSec !== null && r.paceToCatchSec > 0 ? formatSecPerLap(r.paceToCatchSec) : '—'}
-                  </td>
-                </tr>
-              ))}
+              {rows.map((r) => {
+                const behindOpponent =
+                  r.key !== 'A' &&
+                  aTheoreticalFinal !== null &&
+                  r.theoreticalFinalLaps !== null &&
+                  aTheoreticalFinal < r.theoreticalFinalLaps - 1e-6
+                const leadOrTieOpponent =
+                  r.key !== 'A' &&
+                  aTheoreticalFinal !== null &&
+                  r.theoreticalFinalLaps !== null &&
+                  aTheoreticalFinal >= r.theoreticalFinalLaps - 1e-6
+                const paceCell =
+                  r.key === 'A'
+                    ? '—'
+                    : behindOpponent && r.paceToCatchSec !== null && r.paceToCatchSec > 0
+                      ? formatSecPerLap(r.paceToCatchSec)
+                      : leadOrTieOpponent && r.paceOppCatchUsSec !== null && r.paceOppCatchUsSec > 0
+                        ? formatSecPerLap(r.paceOppCatchUsSec)
+                        : '—'
+                return (
+                  <tr key={r.key} className={r.key === 'A' ? 'strategy-row-own' : ''}>
+                    <td>{r.key}</td>
+                    <td>{r.name}</td>
+                    <td className="mono">{r.laps}</td>
+                    <td className="mono">{r.lapGap}</td>
+                    <td className="mono">{r.avgLapSec !== null ? `${r.avgLapSec.toFixed(3)} 秒` : '—'}</td>
+                    <td className="mono">{formatDurationMs(r.pitCatchUpMs)}</td>
+                    <td className="mono">
+                      {r.pitCatchUpLaps !== null && Number.isFinite(r.pitCatchUpLaps)
+                        ? (Math.round(r.pitCatchUpLaps * 1000) / 1000).toFixed(3)
+                        : '—'}
+                    </td>
+                    <td className="mono">{r.theoreticalFinalLaps !== null ? (Math.round(r.theoreticalFinalLaps * 1000) / 1000).toFixed(3) : '—'}</td>
+                    <td className="mono">{paceCell}</td>
+                  </tr>
+                )
+              })}
             </tbody>
           </table>
         </div>
