@@ -53,8 +53,13 @@ function parseNonNegInt(s: string): number {
   return Number.isFinite(n) && n >= 0 ? n : 0
 }
 
-function remStints(pitCount: number, minStints: number): number {
-  return Math.max(0, minStints - pitCount)
+/** 赛事「最少进站次数」= max(0, 最低棒数 − 1)；剩余进站 = 该项 − 已填进站次数 */
+function minRequiredPitStops(minStints: number): number {
+  return Math.max(0, minStints - 1)
+}
+
+function remainingPitStops(pitCount: number, minStints: number): number {
+  return Math.max(0, minRequiredPitStops(minStints) - pitCount)
 }
 
 export type StrategyAnalysisProps = {
@@ -124,18 +129,21 @@ export default function StrategyAnalysis({ minStints, minPitTimeMinutes }: Strat
       }
     })
 
-    const maxLaps = Math.max(0, ...parsed.map((p) => p.laps))
+    const lapsList = parsed.map((p) => p.laps)
+    const minLaps = lapsList.length > 0 ? Math.min(...lapsList) : 0
     const teamA = parsed.find((p) => p.key === 'A')!
-    const remA = remStints(teamA.pits, minStints)
+    const remA = remainingPitStops(teamA.pits, minStints)
     const avgAMs = avgMs(teamA.samples)
 
     const errs: string[] = []
-    if (minStints <= 0) errs.push('当前赛事「最少棒数」为 0，剩余棒数将恒为 0；请在配置中填写合理规则。')
+    if (minStints < 1) {
+      errs.push('当前赛事「最少棒数」小于 1，最少进站次数按 0 处理；请在配置中填写合理规则。')
+    }
 
     const rowList: RowMetrics[] = parsed.map((p) => {
       const avg = avgMs(p.samples)
-      const rem = remStints(p.pits, minStints)
-      const lapGap = p.laps - maxLaps
+      const rem = remainingPitStops(p.pits, minStints)
+      const lapGap = p.laps - minLaps
       const pitCatchUpMs = (rem - remA) * minPitMs
       const pitCatchUpLaps = avgAMs !== null && avgAMs > 0 ? pitCatchUpMs / avgAMs : null
       const driveRem = Math.max(0, raceRemainMs - rem * minPitMs)
@@ -170,7 +178,7 @@ export default function StrategyAnalysis({ minStints, minPitTimeMinutes }: Strat
         const avgO = avgMs(p.samples)
         const paceMs = fastest !== null && fastest > 0 ? fastest : avgO !== null && avgO > 0 ? avgO : null
         if (paceMs === null || paceMs <= 0) continue
-        const remO = remStints(p.pits, minStints)
+        const remO = remainingPitStops(p.pits, minStints)
         const driveO = Math.max(0, raceRemainMs - remO * minPitMs)
         const oppFinalLaps = p.laps + driveO / paceMs
         const gapNeed = oppFinalLaps - La
@@ -192,8 +200,12 @@ export default function StrategyAnalysis({ minStints, minPitTimeMinutes }: Strat
       <section className="card strategy-input-card">
         <h2>策略 · 数据分析</h2>
         <p className="hint">
-          上方录入手动数据，下方按<strong>当前圈数</strong>从高到低排列。进站次数与赛事「最少棒数」共同推算剩余棒数（剩余 =
-          max(0, 最少棒数 − 进站次数)）。平均圈速为所有已提交单圈样本的算术平均。
+          上方录入手动数据，下方按<strong>当前圈数</strong>从高到低排列。<strong>最少进站次数</strong>取赛事「最低棒数 −
+          1」（不少于 0）；各队<strong>剩余进站次数</strong> = max(0, 最少进站次数 − 您填写的进站次数)，剩余进站用时 = 剩余进站次数 ×
+          最小进站时长。<strong>圈数差</strong>以四队中<strong>当前圈数最少</strong>者为参照，差值均为非负。平均圈速为已提交单圈样本的算术平均。
+        </p>
+        <p className="hint">
+          当前赛事最少进站次数（用于策略表）：<strong>{minRequiredPitStops(minStints)}</strong>（最低棒数 {minStints} − 1）
         </p>
 
         <label className="strategy-field strategy-race-rem">
@@ -229,7 +241,7 @@ export default function StrategyAnalysis({ minStints, minPitTimeMinutes }: Strat
                 />
               </label>
               <label>
-                进站次数
+                进站次数（已完成）
                 <input
                   type="number"
                   min={0}
@@ -275,10 +287,10 @@ export default function StrategyAnalysis({ minStints, minPitTimeMinutes }: Strat
       <section className="card strategy-result-card">
         <h3>对比结果</h3>
         <p className="hint">
-          <strong>圈数差</strong>：相对当前最高圈数（可为负）。<strong>进站追赶时间</strong>：（该队剩余棒数 −
-          本队剩余棒数）× 最小进站时间。<strong>进站追赶圈数</strong>：上进站追赶时间 ÷ 本队平均圈速。<strong>理论最终圈数</strong>：当前圈数 +
-          max(0, 剩余赛时 − 该队剩余进站总用时) ÷ 该队平均圈速。<strong>追赶需均圈</strong>（仅本队）：假设对手以其实测<strong>最快单圈</strong>
-          跑满剩余有效赛时，本队在剩余有效赛时内为追平对方理论最终圈数所需的<strong>平均</strong>圈速（取对 B/C/D 最紧值）。
+          <strong>圈数差</strong>：当前圈数 − 全场最低圈数（最小为 0）。<strong>进站追赶时间</strong>：（该队剩余进站次数 −
+          本队剩余进站次数）× 最小进站时间。<strong>进站追赶圈数</strong>：进站追赶时间 ÷ 本队平均圈速。<strong>理论最终圈数</strong>：当前圈数 +
+          max(0, 剩余赛时 − 该队剩余进站次数 × 最小进站时间) ÷ 该队平均圈速。<strong>追赶需均圈</strong>（仅本队）：对手以其实测<strong>最快单圈</strong>
+          跑满剩余有效赛时，本队为追平对方理论最终圈数所需的<strong>平均</strong>圈速（取 B/C/D 最紧值）。
         </p>
         {errors.length > 0 && (
           <div className="strategy-warn">
