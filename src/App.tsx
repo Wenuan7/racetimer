@@ -1597,7 +1597,14 @@ export default function App() {
                   const stat =
                     driverStats.get(d.id) ??
                     ({ totalTime: 0, stintCount: 0, stints: [] as { duration: number; pitDuration: number | null; teamStintNo: number }[] })
-                  const totalMin = totalMsToMinutes(stat.totalTime)
+                  const driverTotalMs =
+                    stat.totalTime +
+                    (d.id === state.currentDriverId && state.activeStintStartTime !== null ? activeStintMs : 0)
+                  const totalMin = totalMsToMinutes(driverTotalMs)
+                  const minMs = selectedEvent.minDriveTimeMinutes * 60000
+                  const maxMs = selectedEvent.maxDriveTimeMinutes * 60000
+                  const gapToMinMs = Math.max(0, minMs - driverTotalMs)
+                  const gapToMaxMs = maxMs - driverTotalMs
                   const isLow = totalMin < selectedEvent.minDriveTimeMinutes
                   const isHigh = totalMin > selectedEvent.maxDriveTimeMinutes
                   const hint = isLow ? '低于最少驾驶时间' : isHigh ? '超过最大驾驶时间' : '正常'
@@ -1605,7 +1612,17 @@ export default function App() {
                   return (
                     <article key={d.id} className="stat-item">
                       <p>{d.name}</p>
-                      <p className="mono">总驾驶时间: {formatDurationMs(stat.totalTime)}</p>
+                      <p className="mono">总驾驶时间: {formatDurationMs(driverTotalMs)}</p>
+                      <p className="mono">
+                        距个人最少驾驶还差：{gapToMinMs > 0 ? formatDurationMs(gapToMinMs) : '已满足'}
+                      </p>
+                      <p className="mono">
+                        {gapToMaxMs > 0
+                          ? `距个人最多驾驶还差：${formatDurationMs(gapToMaxMs)}`
+                          : gapToMaxMs === 0
+                            ? '距个人最多驾驶：已达上限'
+                            : `已超过个人最多驾驶：${formatDurationMs(-gapToMaxMs)}`}
+                      </p>
                       <p>已跑棒数: {stat.stintCount}</p>
                       <p className={isLow || isHigh ? 'warn' : 'ok'}>{hint}</p>
                       <div className="stint-list">
