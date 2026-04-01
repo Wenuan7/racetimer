@@ -43,11 +43,6 @@ function avgMs(samples: number[]): number | null {
   return s / samples.length
 }
 
-function minMs(samples: number[]): number | null {
-  if (samples.length === 0) return null
-  return Math.min(...samples)
-}
-
 function parseNonNegInt(s: string): number {
   const n = Math.floor(Number(s))
   return Number.isFinite(n) && n >= 0 ? n : 0
@@ -60,6 +55,13 @@ function minRequiredPitStops(minStints: number): number {
 
 function remainingPitStops(pitCount: number, minStints: number): number {
   return Math.max(0, minRequiredPitStops(minStints) - pitCount)
+}
+
+/** 仅当队名（B/C/D 必填）、当前圈数、进站次数均已填写，且至少有一条圈速样本时参与对比；A 队队名可空（显示为本队） */
+function isTeamComplete(f: TeamForm, key: TeamKey): boolean {
+  if (f.lapsStr.trim() === '' || f.pitStr.trim() === '' || f.lapSamplesMs.length === 0) return false
+  if (key !== 'A' && f.name.trim() === '') return false
+  return true
 }
 
 export type StrategyAnalysisProps = {
@@ -117,8 +119,22 @@ export default function StrategyAnalysis({ minStints, minPitTimeMinutes }: Strat
     }))
   }
 
-  const { rows, errors } = useMemo(() => {
-    const parsed = TEAM_KEYS.map((key) => {
+  const { rows, errors, gateMessage } = useMemo(() => {
+    const errs: string[] = []
+    if (minStints < 1) {
+      errs.push('当前赛事「最少棒数」小于 1，最少进站次数按 0 处理；请在配置中填写合理规则。')
+    }
+
+    if (!isTeamComplete(teams.A, 'A')) {
+      return {
+        rows: [] as RowMetrics[],
+        errors: errs,
+        gateMessage: '请先完整填写本队（队伍 A）：当前圈数、进站次数（已完成），并至少添加一条圈速后，再显示对比结果。',
+      }
+    }
+
+    const participatingKeys = TEAM_KEYS.filter((k) => isTeamComplete(teams[k], k))
+    const parsed = participatingKeys.map((key) => {
       const f = teams[key]
       return {
         key,
@@ -129,23 +145,20 @@ export default function StrategyAnalysis({ minStints, minPitTimeMinutes }: Strat
       }
     })
 
-    const lapsList = parsed.map((p) => p.laps)
-    const minLaps = lapsList.length > 0 ? Math.min(...lapsList) : 0
     const teamA = parsed.find((p) => p.key === 'A')!
+    const La = teamA.laps
     const remA = remainingPitStops(teamA.pits, minStints)
     const avgAMs = avgMs(teamA.samples)
-
-    const errs: string[] = []
-    if (minStints < 1) {
-      errs.push('当前赛事「最少棒数」小于 1，最少进站次数按 0 处理；请在配置中填写合理规则。')
-    }
 
     const rowList: RowMetrics[] = parsed.map((p) => {
       const avg = avgMs(p.samples)
       const rem = remainingPitStops(p.pits, minStints)
-      const lapGap = p.laps - minLaps
+      const lapGap = p.laps - La
       const pitCatchUpMs = (rem - remA) * minPitMs
-      const pitCatchUpLaps = avgAMs !== null && avgAMs > 0 ? pitCatchUpMs / avgAMs : null
+      let pitCatchUpLaps: number | null = null
+      if (avgAMs !== null && avgAMs > 0) {
+        pitCatchUpLaps = pitCatchUpMs / avgAMs
+      }
       const driveRem = Math.max(0, raceRemainMs - rem * minPitMs)
       let theoreticalFinalLaps: number | null = null
       if (avg !== null && avg > 0) {
@@ -167,32 +180,37 @@ export default function StrategyAnalysis({ minStints, minPitTimeMinutes }: Strat
       }
     })
 
-    const aRow = rowList.find((r) => r.key === 'A')!
+    const driveA = Math.max(0, raceRemainMs - remA * minPitMs)
     let bestPaceMs: number | null = null
-    if (avgAMs !== null && avgAMs > 0 && raceRemainMs > 0) {
-      const La = teamA.laps
-      const driveA = Math.max(0, raceRemainMs - remA * minPitMs)
-      for (const p of parsed) {
-        if (p.key === 'A') continue
-        const fastest = minMs(p.samples)
-        const avgO = avgMs(p.samples)
-        const paceMs = fastest !== null && fastest > 0 ? fastest : avgO !== null && avgO > 0 ? avgO : null
-        if (paceMs === null || paceMs <= 0) continue
-        const remO = remainingPitStops(p.pits, minStints)
-        const driveO = Math.max(0, raceRemainMs - remO * minPitMs)
-        const oppFinalLaps = p.laps + driveO / paceMs
-        const gapNeed = oppFinalLaps - La
-        if (gapNeed <= 0 || driveA <= 0) continue
+
+    for (const p of parsed) {
+      if (p.key === 'A') continue
+      const avgO = avgMs(p.samples)
+      if (avgO === null || avgO <= 0) continue
+      const remO = remainingPitStops(p.pits, minStints)
+      const driveO = Math.max(0, raceRemainMs - remO * minPitMs)
+      const finalO = p.laps + driveO / avgO
+      const gapNeed = finalO - La
+
+      let tReqMs: number | null = null
+      if (gapNeed > 0 && driveA > 0 && avgAMs !== null && avgAMs > 0) {
         const tReq = driveA / gapNeed
-        if (!Number.isFinite(tReq) || tReq <= 0) continue
-        bestPaceMs = bestPaceMs === null ? tReq : Math.min(bestPaceMs, tReq)
+        if (Number.isFinite(tReq) && tReq > 0) tReqMs = tReq
+      }
+
+      const row = rowList.find((r) => r.key === p.key)!
+      row.paceToCatchSec = tReqMs !== null ? tReqMs / 1000 : null
+      if (tReqMs !== null) {
+        bestPaceMs = bestPaceMs === null ? tReqMs : Math.min(bestPaceMs, tReqMs)
       }
     }
+
+    const aRow = rowList.find((r) => r.key === 'A')!
     aRow.paceToCatchSec = bestPaceMs !== null ? bestPaceMs / 1000 : null
 
     rowList.sort((a, b) => b.laps - a.laps)
 
-    return { rows: rowList, errors: errs }
+    return { rows: rowList, errors: errs, gateMessage: null as string | null }
   }, [teams, raceRemainMs, minStints, minPitMs])
 
   return (
@@ -200,9 +218,9 @@ export default function StrategyAnalysis({ minStints, minPitTimeMinutes }: Strat
       <section className="card strategy-input-card">
         <h2>策略 · 数据分析</h2>
         <p className="hint">
-          上方录入手动数据，下方按<strong>当前圈数</strong>从高到低排列。<strong>最少进站次数</strong>取赛事「最低棒数 −
-          1」（不少于 0）；各队<strong>剩余进站次数</strong> = max(0, 最少进站次数 − 您填写的进站次数)，剩余进站用时 = 剩余进站次数 ×
-          最小进站时长。<strong>圈数差</strong>以四队中<strong>当前圈数最少</strong>者为参照，差值均为非负。平均圈速为已提交单圈样本的算术平均。
+          只有<strong>填写完整</strong>的队伍会出现在下方对比表：<strong>当前圈数</strong>、<strong>进站次数</strong>、<strong>至少一条圈速</strong>必填；队伍
+          B/C/D 另需填写<strong>队名</strong>。须先完整填写<strong>本队 A</strong>，表格才会显示。排序为当前圈数从高到低。<strong>最少进站次数</strong>=
+          max(0, 最低棒数 − 1)；<strong>剩余进站次数</strong>= max(0, 最少进站次数 − 已进站次数)；剩余进站用时 = 剩余进站次数 × 最小进站时长。
         </p>
         <p className="hint">
           当前赛事最少进站次数（用于策略表）：<strong>{minRequiredPitStops(minStints)}</strong>（最低棒数 {minStints} − 1）
@@ -287,11 +305,12 @@ export default function StrategyAnalysis({ minStints, minPitTimeMinutes }: Strat
       <section className="card strategy-result-card">
         <h3>对比结果</h3>
         <p className="hint">
-          <strong>圈数差</strong>：当前圈数 − 全场最低圈数（最小为 0）。<strong>进站追赶时间</strong>：（该队剩余进站次数 −
-          本队剩余进站次数）× 最小进站时间。<strong>进站追赶圈数</strong>：进站追赶时间 ÷ 本队平均圈速。<strong>理论最终圈数</strong>：当前圈数 +
-          max(0, 剩余赛时 − 该队剩余进站次数 × 最小进站时间) ÷ 该队平均圈速。<strong>追赶需均圈</strong>（仅本队）：对手以其实测<strong>最快单圈</strong>
-          跑满剩余有效赛时，本队为追平对方理论最终圈数所需的<strong>平均</strong>圈速（取 B/C/D 最紧值）。
+          <strong>圈数差</strong>：当前圈数 − <strong>本队（A）当前圈数</strong>（可负）。<strong>进站追赶时间</strong>：（该队剩余进站次数 −
+          本队剩余进站次数）× 最小进站时间（可为负，按负时间显示）。<strong>进站追赶圈数</strong>：进站追赶时间 ÷ 本队平均圈速（可负）。<strong>理论最终圈数</strong>：当前圈数
+          + max(0, 剩余赛时 − 该队剩余进站次数 × 最小进站时间) ÷ 该队平均圈速。<strong>追赶需均圈</strong>：假设<strong>该队</strong>以其实测<strong>平均单圈</strong>
+          跑满剩余有效赛时，<strong>本队</strong>为追平该队理论最终圈数所需的平均圈速（秒/圈）；B/C/D 各行对应该队；A 行取对各对手结果中<strong>最紧</strong>（需时最短）的一个。
         </p>
+        {gateMessage && <div className="strategy-warn">{gateMessage}</div>}
         {errors.length > 0 && (
           <div className="strategy-warn">
             {errors.map((e) => (
@@ -316,6 +335,13 @@ export default function StrategyAnalysis({ minStints, minPitTimeMinutes }: Strat
               </tr>
             </thead>
             <tbody>
+              {rows.length === 0 && !gateMessage ? (
+                <tr>
+                  <td colSpan={9} className="hint" style={{ padding: 16 }}>
+                    暂无完整数据的对比行；请至少完整填写本队 A，并完整填写需要对比的其他队伍。
+                  </td>
+                </tr>
+              ) : null}
               {rows.map((r) => (
                 <tr key={r.key} className={r.key === 'A' ? 'strategy-row-own' : ''}>
                   <td>{r.key}</td>
@@ -325,15 +351,13 @@ export default function StrategyAnalysis({ minStints, minPitTimeMinutes }: Strat
                   <td className="mono">{r.avgLapSec !== null ? `${r.avgLapSec.toFixed(3)} 秒` : '—'}</td>
                   <td className="mono">{formatDurationMs(r.pitCatchUpMs)}</td>
                   <td className="mono">
-                    {r.pitCatchUpLaps !== null ? (Math.round(r.pitCatchUpLaps * 1000) / 1000).toFixed(3) : '—'}
+                    {r.pitCatchUpLaps !== null && Number.isFinite(r.pitCatchUpLaps)
+                      ? (Math.round(r.pitCatchUpLaps * 1000) / 1000).toFixed(3)
+                      : '—'}
                   </td>
                   <td className="mono">{r.theoreticalFinalLaps !== null ? (Math.round(r.theoreticalFinalLaps * 1000) / 1000).toFixed(3) : '—'}</td>
                   <td className="mono">
-                    {r.key === 'A'
-                      ? r.paceToCatchSec !== null
-                        ? formatSecPerLap(r.paceToCatchSec)
-                        : '—'
-                      : '—'}
+                    {r.paceToCatchSec !== null && r.paceToCatchSec > 0 ? formatSecPerLap(r.paceToCatchSec) : '—'}
                   </td>
                 </tr>
               ))}
