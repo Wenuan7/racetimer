@@ -734,7 +734,7 @@ button:disabled {
 .vehicle-pit-rank {
   position: absolute;
   top: 6px;
-  right: 6px;
+  left: 6px;
   width: 18px;
   height: 18px;
   border-radius: 999px;
