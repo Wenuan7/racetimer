@@ -688,6 +688,7 @@ button:disabled {
   border-radius: 10px;
   background: #fff;
   padding: 10px;
+  position: relative;
   display: flex;
   align-items: center;
   gap: 10px;
@@ -712,6 +713,8 @@ button:disabled {
   box-shadow: none;
   cursor: pointer;
   padding: 0;
+  line-height: 1.1;
+  text-align: center;
 }
 
 .vehicle-mini-meta {
@@ -726,6 +729,31 @@ button:disabled {
   font-size: 14px;
   font-weight: 800;
   color: #0f172a;
+}
+
+.vehicle-pit-rank {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  background: #2563eb;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 900;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.22);
+}
+
+.vehicle-queue-item {
+  cursor: grab;
+}
+
+.vehicle-queue-item:active {
+  cursor: grabbing;
 }
 
 .vehicle-mini-grade {
