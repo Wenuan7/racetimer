@@ -1085,9 +1085,18 @@ export default function App() {
     return VEHICLE_GRADES.includes(v as Exclude<VehicleGrade, ''>) ? (v as Exclude<VehicleGrade, ''>) : ''
   }
   const getVehiclePitCount = (carNo: number) => vehiclePitCounts[getVehicleKey(carNo)] ?? 0
-  const pitGradeSCount = useMemo(() => pitCars.filter((carNo) => getVehicleGrade(carNo) === 'S').length, [pitCars, vehicleMarks, selectedEvent.id])
   const pitFixedCount = Math.max(0, selectedEvent.pitVehicleCount)
-  const vehicleNoOptions = useMemo(() => Array.from({ length: 199 }, (_, i) => i + 1), [])
+  const pitFastCount = useMemo(() => {
+    const frontPitCars = pitCars.slice(0, pitFixedCount)
+    return frontPitCars.filter((carNo) => {
+      const g = getVehicleGrade(carNo)
+      return g === 'S' || g === 'A'
+    }).length
+  }, [pitCars, pitFixedCount, vehicleMarks, selectedEvent.id])
+  const vehicleNoOptions = useMemo(
+    () => Array.from({ length: Math.max(1, selectedEvent.pitVehicleCount + selectedEvent.teamCount + 3) }, (_, i) => i + 1),
+    [selectedEvent.pitVehicleCount, selectedEvent.teamCount],
+  )
 
   const onVehicleInPit = (carNo: number) => {
     if (!poolCars.includes(carNo)) return
@@ -1155,10 +1164,10 @@ export default function App() {
       <article key={key} className="vehicle-mini">
         {!isPool && pitIndex !== null && pitIndex < pitFixedCount ? <span className="vehicle-pit-rank">{pitIndex + 1}</span> : null}
         <button type="button" className="vehicle-mini-no" onClick={() => setSelectedVehicle({ carNo, zoneLabel })}>
-          {vehicleNo !== null ? `#${vehicleNo}` : '未选'}
+          {vehicleNo !== null ? `#${vehicleNo}` : ''}
         </button>
         <div className="vehicle-mini-meta">
-          <span className="vehicle-mini-team">车号：{vehicleNo !== null ? vehicleNo : '未选择'}</span>
+          {vehicleNo !== null ? <span className="vehicle-mini-team">车号：{vehicleNo}</span> : null}
           <span>进站次数：{getVehiclePitCount(carNo)}</span>
         </div>
         <div className={`vehicle-mini-grade ${grade ? 'has-grade' : ''}`}>{grade || ''}</div>
@@ -1468,9 +1477,9 @@ export default function App() {
               <div className="vehicle-block">
                 <div className="vehicle-block-head vehicle-block-head-row">
                   <span>P区模块（维修区车辆数：{selectedEvent.pitVehicleCount}）</span>
-                  <span className="vehicle-fast-count">
-                    P区 S级 {pitGradeSCount}/{pitCars.length}
-                  </span>
+                  {pitFixedCount > 0 && pitFastCount * 2 >= pitFixedCount ? (
+                    <span className="vehicle-fast-count">快车{pitFastCount}/{pitFixedCount}</span>
+                  ) : null}
                 </div>
                 <p className="hint waiting-drag-hint">点击场上车辆「进站」后会直接追加到P区队列尾部；前 {pitFixedCount} 辆为维修区车辆并显示编号，后续车辆可拖拽排序。</p>
                 <div className="vehicle-grid">
