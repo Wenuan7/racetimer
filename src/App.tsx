@@ -131,37 +131,67 @@ function finiteNum(v: unknown, fallback: number) {
   return Number.isFinite(n) ? n : fallback
 }
 
-/** P 区：场上车身（槽位 ≤ teamCount）按出现顺序填满前 fix 个维修位，其余为占位空位，队尾为溢出队列 —— 先进先出 */
-function normalizePitCarsOrder(pitCars: number[], teamCount: number, fix: number): number[] {
-  const poolCars: number[] = []
-  const placeholders: number[] = []
-  for (const n of pitCars) {
-    if (n <= teamCount) poolCars.push(n)
-    else placeholders.push(n)
-  }
-  if (fix <= 0) return [...poolCars, ...placeholders]
+/**
+ * P 区排队：前 fix 个维修位始终为「无车号」车身（占位槽或已清空车号的底盘）；
+ * 带车号的车辆排在后面，顺序为进站 FIFO。溢出车号车接在队尾。
+ */
+function repackPitCarsQueue(
+  pitCars: number[],
+  vehicleNos: Record<string, number | null>,
+  getVehicleKey: (carNo: number) => string,
+  teamCount: number,
+  fix: number,
+): number[] {
+  const getNo = (carNo: number) => vehicleNos[getVehicleKey(carNo)] ?? null
 
-  const next: number[] = []
-  let pi = 0
-  for (let i = 0; i < fix; i++) {
-    if (pi < poolCars.length) {
-      next.push(poolCars[pi++])
-    } else {
-      const ph = placeholders.shift()
-      if (ph !== undefined) {
-        next.push(ph)
+  if (fix <= 0) {
+    const unord: number[] = []
+    const numord: number[] = []
+    for (const n of pitCars) {
+      if (getNo(n) !== null) {
+        if (!numord.includes(n)) numord.push(n)
       } else {
-        const used = new Set<number>(next)
-        for (let k = pi; k < poolCars.length; k++) used.add(poolCars[k])
-        for (const x of placeholders) used.add(x)
-        let id = teamCount + 1
-        while (used.has(id) || id <= teamCount) id++
-        next.push(id)
+        if (!unord.includes(n)) unord.push(n)
       }
     }
+    return [...unord, ...numord]
   }
-  while (pi < poolCars.length) next.push(poolCars[pi++])
-  return next
+
+  const unnumbered: number[] = []
+  const numbered: number[] = []
+  for (const n of pitCars) {
+    if (getNo(n) !== null) numbered.push(n)
+    else unnumbered.push(n)
+  }
+
+  const ph = unnumbered.filter((n) => n > teamCount).sort((a, b) => a - b)
+  const poolUnnumbered = unnumbered.filter((n) => n <= teamCount)
+  const poolOrder: number[] = []
+  for (const n of pitCars) {
+    if (poolUnnumbered.includes(n) && !poolOrder.includes(n)) poolOrder.push(n)
+  }
+  const blanksSorted = [...ph, ...poolOrder]
+
+  const leading: number[] = []
+  let bi = 0
+  for (let i = 0; i < fix; i++) {
+    if (bi < blanksSorted.length) {
+      leading.push(blanksSorted[bi++])
+    } else {
+      const used = new Set<number>([...leading, ...blanksSorted.slice(bi), ...numbered])
+      let id = teamCount + 1
+      while (used.has(id) || id <= teamCount) id++
+      leading.push(id)
+    }
+  }
+  const leftoverBlanks = blanksSorted.slice(bi)
+
+  const numberedOrder: number[] = []
+  for (const n of pitCars) {
+    if (getNo(n) !== null && !numberedOrder.includes(n)) numberedOrder.push(n)
+  }
+
+  return [...leading, ...leftoverBlanks, ...numberedOrder]
 }
 
 function createId(prefix: string) {
@@ -1120,12 +1150,11 @@ export default function App() {
   const getVehiclePitCount = (carNo: number) => vehiclePitCounts[getVehicleKey(carNo)] ?? 0
   const pitFixedCount = Math.max(0, selectedEvent.pitVehicleCount)
   const pitFastCount = useMemo(() => {
-    const frontPitCars = pitCars.slice(0, pitFixedCount)
-    return frontPitCars.filter((carNo) => {
+    return pitCars.filter((carNo) => {
       const g = getVehicleGrade(carNo)
       return g === 'S' || g === 'A'
     }).length
-  }, [pitCars, pitFixedCount, vehicleMarks, selectedEvent.id])
+  }, [pitCars, vehicleMarks, selectedEvent.id])
   const vehicleNoOptions = useMemo(
     () => Array.from({ length: Math.max(1, selectedEvent.pitVehicleCount + selectedEvent.teamCount + 3) }, (_, i) => i + 1),
     [selectedEvent.pitVehicleCount, selectedEvent.teamCount],
@@ -1139,20 +1168,7 @@ export default function App() {
     setPoolCars((prev) => prev.filter((n) => n !== carNo))
     const team = selectedEvent.teamCount
     const fix = pitFixedCount
-    setPitCars((prev) => {
-      const base = normalizePitCarsOrder(prev, team, fix)
-      const next = [...base]
-      let replaced = false
-      for (let i = 0; i < fix && i < next.length; i++) {
-        if (next[i] > team) {
-          next[i] = carNo
-          replaced = true
-          break
-        }
-      }
-      if (!replaced) next.push(carNo)
-      return normalizePitCarsOrder(next, team, fix)
-    })
+    setPitCars((prev) => repackPitCarsQueue([...prev, carNo], vehicleNos, getVehicleKey, team, fix))
   }
 
   const onVehicleOutPit = (carNo: number, pitIndex: number | null = null) => {
@@ -1162,17 +1178,13 @@ export default function App() {
 
     const outKey = getVehicleKey(carNo)
     const outNo = vehicleNos[outKey] ?? null
-    const outGrade = vehicleMarks[outKey] ?? ''
-    const outHasNoGrade = outGrade === '' || !VEHICLE_GRADES.includes(outGrade as Exclude<VehicleGrade, ''>)
-    // 空白维修车出站：车手号跟「出站新车身」回场上；原进站车身留在 P 区，仅保留等级（不迁车号）
-    const blankOut = outNo === null && outHasNoGrade
+    // 维修位出站且无车号：FIFO 队首带号车把车号交给出站车身（等级仍留在原底盘槽位）
+    const blankOut = outNo === null
     let donorNo: number | null = null
     let donorCarNo: number | null = null
     if (blankOut) {
-      const poolMax = selectedEvent.teamCount
-      // 供体：先进先出 —— 从左到右第一台带车号的场上车身（进站顺序与维修位顺序一致）
       for (const n of pitCars) {
-        if (n === carNo || n > poolMax) continue
+        if (n === carNo) continue
         const dNo = vehicleNos[getVehicleKey(n)] ?? null
         if (dNo !== null) {
           donorNo = dNo
@@ -1180,35 +1192,20 @@ export default function App() {
           break
         }
       }
-      if (donorCarNo === null) {
-        for (const n of pitCars) {
-          if (n === carNo) continue
-          const dNo = vehicleNos[getVehicleKey(n)] ?? null
-          if (dNo !== null) {
-            donorNo = dNo
-            donorCarNo = n
-            break
-          }
-        }
-      }
     }
 
-    const team = selectedEvent.teamCount
-    setPitCars((prev) => normalizePitCarsOrder(
-      prev.filter((n) => n !== carNo),
-      team,
-      pitFixedCount,
-    ))
-    setPoolCars((prev) => [...prev, carNo])
-
-    if (donorCarNo !== null && donorNo !== null) {
+    const afterFilter = pitCars.filter((n) => n !== carNo)
+    let nextVehicleNos = vehicleNos
+    if (blankOut && donorCarNo !== null && donorNo !== null) {
       const donorKey = getVehicleKey(donorCarNo)
-      setVehicleNos((prev) => ({
-        ...prev,
-        [outKey]: donorNo,
-        [donorKey]: null,
-      }))
+      nextVehicleNos = { ...vehicleNos, [outKey]: donorNo, [donorKey]: null }
     }
+
+    setVehicleNos(nextVehicleNos)
+    setPitCars(
+      repackPitCarsQueue(afterFilter, nextVehicleNos, getVehicleKey, selectedEvent.teamCount, pitFixedCount),
+    )
+    setPoolCars((prev) => [...prev, carNo])
   }
 
   const reorderPitQueue = (from: number, to: number) => {
@@ -1578,7 +1575,7 @@ export default function App() {
                   ) : null}
                 </div>
                 <p className="hint waiting-drag-hint">
-                  场上车辆「进站」会按顺序填入维修区空位（先进先出）；前 {pitFixedCount} 个为维修位并显示序号，满员后的车辆排在队尾并可拖拽排序。
+                  P 区为排队：前 {pitFixedCount} 个维修位始终为无车号车身；带车号车辆进站后排在队尾（先进先出）。从维修位「出站」时，队首车号会换到出站车身上，无号空位由队列重排自动补满。
                 </p>
                 <div className="vehicle-grid">
                   {pitCars.length === 0 ? (
@@ -1898,10 +1895,16 @@ export default function App() {
               <select
                 value={getVehicleNo(selectedVehicle.carNo) ?? ''}
                 onChange={(e) =>
-                  setVehicleNos((prev) => ({
-                    ...prev,
-                    [getVehicleKey(selectedVehicle.carNo)]: e.target.value ? Number(e.target.value) : null,
-                  }))
+                  setVehicleNos((prev) => {
+                    const next = {
+                      ...prev,
+                      [getVehicleKey(selectedVehicle.carNo)]: e.target.value ? Number(e.target.value) : null,
+                    }
+                    setPitCars((p) =>
+                      repackPitCarsQueue(p, next, getVehicleKey, selectedEvent.teamCount, pitFixedCount),
+                    )
+                    return next
+                  })
                 }
               >
                 <option value="">未选择</option>
