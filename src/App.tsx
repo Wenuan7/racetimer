@@ -1506,6 +1506,10 @@ export default function App() {
                 }}
               />
             </section>
+
+            <p className="hint config-version-footer" style={{ textAlign: 'center', marginTop: '1.25rem', marginBottom: '0.5rem' }}>
+              版本 {__APP_VERSION__}
+            </p>
           </>
         )}
 
