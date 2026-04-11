@@ -20,7 +20,7 @@ type Stint = {
   pitDuration: number | null
 }
 
-// 车辆等级（跟随车号）
+// 车辆等级（性能档，绑定在「车身」槽位；换车出站时车号可换到新车身，等级留在原槽位）
 type VehicleGrade = '' | 'S' | 'A' | 'B' | 'C' | 'G'
 const VEHICLE_GRADES: Exclude<VehicleGrade, ''>[] = ['S', 'A', 'B', 'C', 'G']
 
@@ -1111,8 +1111,52 @@ export default function App() {
     if (!pitCars.includes(carNo)) return
     const idx = pitIndex ?? pitCars.indexOf(carNo)
     if (idx < 0 || idx >= pitFixedCount) return
+
+    const outKey = getVehicleKey(carNo)
+    const outNo = vehicleNos[outKey] ?? null
+    const outGrade = vehicleMarks[outKey] ?? ''
+    const outHasNoGrade = outGrade === '' || !VEHICLE_GRADES.includes(outGrade as Exclude<VehicleGrade, ''>)
+    // 空白维修车出站：车手号跟「出站新车身」回场上；原进站车身留在 P 区，仅保留等级（不迁车号）
+    const blankOut = outNo === null && outHasNoGrade
+    let donorNo: number | null = null
+    let donorCarNo: number | null = null
+    if (blankOut) {
+      const poolMax = selectedEvent.teamCount
+      // 供体优先：来自车辆池、仍在本场 P 区队列中的槽位（进站车身）；从队尾向前取，匹配最近一次进站
+      for (let i = pitCars.length - 1; i >= 0; i--) {
+        const n = pitCars[i]
+        if (n === carNo || n > poolMax) continue
+        const dNo = vehicleNos[getVehicleKey(n)] ?? null
+        if (dNo !== null) {
+          donorNo = dNo
+          donorCarNo = n
+          break
+        }
+      }
+      if (donorCarNo === null) {
+        for (const n of pitCars) {
+          if (n === carNo) continue
+          const dNo = vehicleNos[getVehicleKey(n)] ?? null
+          if (dNo !== null) {
+            donorNo = dNo
+            donorCarNo = n
+            break
+          }
+        }
+      }
+    }
+
     setPitCars((prev) => prev.filter((n) => n !== carNo))
     setPoolCars((prev) => [...prev, carNo])
+
+    if (donorCarNo !== null && donorNo !== null) {
+      const donorKey = getVehicleKey(donorCarNo)
+      setVehicleNos((prev) => ({
+        ...prev,
+        [outKey]: donorNo,
+        [donorKey]: null,
+      }))
+    }
   }
 
   const reorderPitQueue = (from: number, to: number) => {
