@@ -131,6 +131,39 @@ function finiteNum(v: unknown, fallback: number) {
   return Number.isFinite(n) ? n : fallback
 }
 
+/** P 区：场上车身（槽位 ≤ teamCount）按出现顺序填满前 fix 个维修位，其余为占位空位，队尾为溢出队列 —— 先进先出 */
+function normalizePitCarsOrder(pitCars: number[], teamCount: number, fix: number): number[] {
+  const poolCars: number[] = []
+  const placeholders: number[] = []
+  for (const n of pitCars) {
+    if (n <= teamCount) poolCars.push(n)
+    else placeholders.push(n)
+  }
+  if (fix <= 0) return [...poolCars, ...placeholders]
+
+  const next: number[] = []
+  let pi = 0
+  for (let i = 0; i < fix; i++) {
+    if (pi < poolCars.length) {
+      next.push(poolCars[pi++])
+    } else {
+      const ph = placeholders.shift()
+      if (ph !== undefined) {
+        next.push(ph)
+      } else {
+        const used = new Set<number>(next)
+        for (let k = pi; k < poolCars.length; k++) used.add(poolCars[k])
+        for (const x of placeholders) used.add(x)
+        let id = teamCount + 1
+        while (used.has(id) || id <= teamCount) id++
+        next.push(id)
+      }
+    }
+  }
+  while (pi < poolCars.length) next.push(poolCars[pi++])
+  return next
+}
+
 function createId(prefix: string) {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`
 }
@@ -1104,7 +1137,22 @@ export default function App() {
     const nextPitCount = getVehiclePitCount(carNo) + 1
     setVehiclePitCounts((prev) => ({ ...prev, [key]: nextPitCount }))
     setPoolCars((prev) => prev.filter((n) => n !== carNo))
-    setPitCars((prev) => [...prev, carNo])
+    const team = selectedEvent.teamCount
+    const fix = pitFixedCount
+    setPitCars((prev) => {
+      const base = normalizePitCarsOrder(prev, team, fix)
+      const next = [...base]
+      let replaced = false
+      for (let i = 0; i < fix && i < next.length; i++) {
+        if (next[i] > team) {
+          next[i] = carNo
+          replaced = true
+          break
+        }
+      }
+      if (!replaced) next.push(carNo)
+      return normalizePitCarsOrder(next, team, fix)
+    })
   }
 
   const onVehicleOutPit = (carNo: number, pitIndex: number | null = null) => {
@@ -1122,9 +1170,8 @@ export default function App() {
     let donorCarNo: number | null = null
     if (blankOut) {
       const poolMax = selectedEvent.teamCount
-      // 供体优先：来自车辆池、仍在本场 P 区队列中的槽位（进站车身）；从队尾向前取，匹配最近一次进站
-      for (let i = pitCars.length - 1; i >= 0; i--) {
-        const n = pitCars[i]
+      // 供体：先进先出 —— 从左到右第一台带车号的场上车身（进站顺序与维修位顺序一致）
+      for (const n of pitCars) {
         if (n === carNo || n > poolMax) continue
         const dNo = vehicleNos[getVehicleKey(n)] ?? null
         if (dNo !== null) {
@@ -1146,7 +1193,12 @@ export default function App() {
       }
     }
 
-    setPitCars((prev) => prev.filter((n) => n !== carNo))
+    const team = selectedEvent.teamCount
+    setPitCars((prev) => normalizePitCarsOrder(
+      prev.filter((n) => n !== carNo),
+      team,
+      pitFixedCount,
+    ))
     setPoolCars((prev) => [...prev, carNo])
 
     if (donorCarNo !== null && donorNo !== null) {
@@ -1525,7 +1577,9 @@ export default function App() {
                     <span className="vehicle-fast-count">快车{pitFastCount}/{pitFixedCount}</span>
                   ) : null}
                 </div>
-                <p className="hint waiting-drag-hint">点击场上车辆「进站」后会直接追加到P区队列尾部；前 {pitFixedCount} 辆为维修区车辆并显示编号，后续车辆可拖拽排序。</p>
+                <p className="hint waiting-drag-hint">
+                  场上车辆「进站」会按顺序填入维修区空位（先进先出）；前 {pitFixedCount} 个为维修位并显示序号，满员后的车辆排在队尾并可拖拽排序。
+                </p>
                 <div className="vehicle-grid">
                   {pitCars.length === 0 ? (
                     <p className="hint">当前 P 区无车辆。</p>
