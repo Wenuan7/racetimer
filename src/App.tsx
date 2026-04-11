@@ -20,7 +20,7 @@ type Stint = {
   pitDuration: number | null
 }
 
-// 车辆等级（性能档，绑定在「车身」槽位；换车出站时车号可换到新车身，等级留在原槽位）
+// 车辆等级（性能档，绑定车身槽位；有排队时出站：车号与进站次数随出站车走，级别留在补位后的队首车身）
 type VehicleGrade = '' | 'S' | 'A' | 'B' | 'C' | 'G'
 const VEHICLE_GRADES: Exclude<VehicleGrade, ''>[] = ['S', 'A', 'B', 'C', 'G']
 
@@ -131,67 +131,22 @@ function finiteNum(v: unknown, fallback: number) {
   return Number.isFinite(n) ? n : fallback
 }
 
-/**
- * P 区排队：前 fix 个维修位始终为「无车号」车身（占位槽或已清空车号的底盘）；
- * 带车号的车辆排在后面，顺序为进站 FIFO。溢出车号车接在队尾。
- */
-function repackPitCarsQueue(
-  pitCars: number[],
-  vehicleNos: Record<string, number | null>,
-  getVehicleKey: (carNo: number) => string,
-  teamCount: number,
-  fix: number,
-): number[] {
-  const getNo = (carNo: number) => vehicleNos[getVehicleKey(carNo)] ?? null
+/** 为 P 区维修位生成不与 used 冲突的占位槽位 ID（> teamCount） */
+function allocPitPlaceholderId(teamCount: number, used: Set<number>): number {
+  let id = teamCount + 1
+  while (used.has(id) || id <= teamCount) id++
+  return id
+}
 
-  if (fix <= 0) {
-    const unord: number[] = []
-    const numord: number[] = []
-    for (const n of pitCars) {
-      if (getNo(n) !== null) {
-        if (!numord.includes(n)) numord.push(n)
-      } else {
-        if (!unord.includes(n)) unord.push(n)
-      }
-    }
-    return [...unord, ...numord]
+/** 将维修区核心凑满 fix 辆（出站后缺位用新占位槽补上） */
+function fillPitCoreToCount(corePartial: number[], fix: number, teamCount: number, used: Set<number>): number[] {
+  const next = [...corePartial]
+  while (next.length < fix) {
+    const id = allocPitPlaceholderId(teamCount, used)
+    used.add(id)
+    next.push(id)
   }
-
-  const unnumbered: number[] = []
-  const numbered: number[] = []
-  for (const n of pitCars) {
-    if (getNo(n) !== null) numbered.push(n)
-    else unnumbered.push(n)
-  }
-
-  const ph = unnumbered.filter((n) => n > teamCount).sort((a, b) => a - b)
-  const poolUnnumbered = unnumbered.filter((n) => n <= teamCount)
-  const poolOrder: number[] = []
-  for (const n of pitCars) {
-    if (poolUnnumbered.includes(n) && !poolOrder.includes(n)) poolOrder.push(n)
-  }
-  const blanksSorted = [...ph, ...poolOrder]
-
-  const leading: number[] = []
-  let bi = 0
-  for (let i = 0; i < fix; i++) {
-    if (bi < blanksSorted.length) {
-      leading.push(blanksSorted[bi++])
-    } else {
-      const used = new Set<number>([...leading, ...blanksSorted.slice(bi), ...numbered])
-      let id = teamCount + 1
-      while (used.has(id) || id <= teamCount) id++
-      leading.push(id)
-    }
-  }
-  const leftoverBlanks = blanksSorted.slice(bi)
-
-  const numberedOrder: number[] = []
-  for (const n of pitCars) {
-    if (getNo(n) !== null && !numberedOrder.includes(n)) numberedOrder.push(n)
-  }
-
-  return [...leading, ...leftoverBlanks, ...numberedOrder]
+  return next
 }
 
 function createId(prefix: string) {
@@ -1166,45 +1121,50 @@ export default function App() {
     const nextPitCount = getVehiclePitCount(carNo) + 1
     setVehiclePitCounts((prev) => ({ ...prev, [key]: nextPitCount }))
     setPoolCars((prev) => prev.filter((n) => n !== carNo))
-    const team = selectedEvent.teamCount
-    const fix = pitFixedCount
-    setPitCars((prev) => repackPitCarsQueue([...prev, carNo], vehicleNos, getVehicleKey, team, fix))
+    // P 区前 pitVehicleCount 辆为配置中的维修位；新车一律排在整个 P 区列表末尾（第 fix+1 辆起为排队）
+    setPitCars((prev) => [...prev, carNo])
   }
 
   const onVehicleOutPit = (carNo: number, pitIndex: number | null = null) => {
     if (!pitCars.includes(carNo)) return
+    const fix = pitFixedCount
+    if (fix <= 0) return
     const idx = pitIndex ?? pitCars.indexOf(carNo)
-    if (idx < 0 || idx >= pitFixedCount) return
+    if (idx < 0 || idx >= fix) return
 
+    const teamCount = selectedEvent.teamCount
     const outKey = getVehicleKey(carNo)
-    const outNo = vehicleNos[outKey] ?? null
-    // 维修位出站且无车号：FIFO 队首带号车把车号交给出站车身（等级仍留在原底盘槽位）
-    const blankOut = outNo === null
-    let donorNo: number | null = null
-    let donorCarNo: number | null = null
-    if (blankOut) {
+    const core = pitCars.slice(0, fix)
+    const queue = pitCars.slice(fix)
+    const hasQueue = queue.length > 0
+    const headCar = hasQueue ? queue[0] : null
+    const headKey = headCar !== null ? getVehicleKey(headCar) : null
+
+    let nextNos = vehicleNos
+    let nextPits = vehiclePitCounts
+
+    if (hasQueue && headCar !== null && headKey !== null) {
+      const headNo = vehicleNos[headKey] ?? null
+      const headPit = vehiclePitCounts[headKey] ?? 0
+      nextNos = { ...vehicleNos, [outKey]: headNo, [headKey]: null }
+      nextPits = { ...vehiclePitCounts, [outKey]: headPit, [headKey]: 0 }
+      const coreWithoutOut = core.filter((n) => n !== carNo)
+      const queueTail = queue.slice(1)
+      const newCore = [...coreWithoutOut, headCar]
+      setVehicleNos(nextNos)
+      setVehiclePitCounts(nextPits)
+      setPitCars([...newCore, ...queueTail])
+    } else {
+      const used = new Set<number>()
       for (const n of pitCars) {
-        if (n === carNo) continue
-        const dNo = vehicleNos[getVehicleKey(n)] ?? null
-        if (dNo !== null) {
-          donorNo = dNo
-          donorCarNo = n
-          break
-        }
+        if (n !== carNo) used.add(n)
       }
+      for (const n of poolCars) used.add(n)
+      const coreWithoutOut = core.filter((n) => n !== carNo)
+      const newCore = fillPitCoreToCount(coreWithoutOut, fix, teamCount, used)
+      setPitCars([...newCore, ...queue])
     }
 
-    const afterFilter = pitCars.filter((n) => n !== carNo)
-    let nextVehicleNos = vehicleNos
-    if (blankOut && donorCarNo !== null && donorNo !== null) {
-      const donorKey = getVehicleKey(donorCarNo)
-      nextVehicleNos = { ...vehicleNos, [outKey]: donorNo, [donorKey]: null }
-    }
-
-    setVehicleNos(nextVehicleNos)
-    setPitCars(
-      repackPitCarsQueue(afterFilter, nextVehicleNos, getVehicleKey, selectedEvent.teamCount, pitFixedCount),
-    )
     setPoolCars((prev) => [...prev, carNo])
   }
 
@@ -1575,7 +1535,7 @@ export default function App() {
                   ) : null}
                 </div>
                 <p className="hint waiting-drag-hint">
-                  P 区为排队：前 {pitFixedCount} 个维修位始终为无车号车身；带车号车辆进站后排在队尾（先进先出）。从维修位「出站」时，队首车号会换到出站车身上，无号空位由队列重排自动补满。
+                  赛时配置决定维修区共 {pitFixedCount} 辆（占位车身）。场上车「进站」排在整个 P 区末尾（第 {pitFixedCount + 1} 辆起为排队）。仅维修位可「出站」：若有排队，则将队首车的<strong>车号</strong>与<strong>进站次数</strong>转到出站车身上回场；队首车身补到维修区<strong>末尾</strong>并<strong>保留级别</strong>。无排队时出站仅释放该维修位并由新占位槽补满 {pitFixedCount} 辆。
                 </p>
                 <div className="vehicle-grid">
                   {pitCars.length === 0 ? (
@@ -1895,16 +1855,10 @@ export default function App() {
               <select
                 value={getVehicleNo(selectedVehicle.carNo) ?? ''}
                 onChange={(e) =>
-                  setVehicleNos((prev) => {
-                    const next = {
-                      ...prev,
-                      [getVehicleKey(selectedVehicle.carNo)]: e.target.value ? Number(e.target.value) : null,
-                    }
-                    setPitCars((p) =>
-                      repackPitCarsQueue(p, next, getVehicleKey, selectedEvent.teamCount, pitFixedCount),
-                    )
-                    return next
-                  })
+                  setVehicleNos((prev) => ({
+                    ...prev,
+                    [getVehicleKey(selectedVehicle.carNo)]: e.target.value ? Number(e.target.value) : null,
+                  }))
                 }
               >
                 <option value="">未选择</option>
